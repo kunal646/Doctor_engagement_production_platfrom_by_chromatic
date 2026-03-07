@@ -3,6 +3,16 @@ import { redirect } from "next/navigation";
 import { Profile, UserRole } from "@/lib/types";
 import { createClient } from "@/lib/supabase/server";
 
+const HOME_BY_ROLE: Record<UserRole, string> = {
+  admin: "/admin/dashboard",
+  ops: "/dashboard",
+  supervisor: "/supervisor/dashboard",
+};
+
+export function homeForRole(role: UserRole) {
+  return HOME_BY_ROLE[role] ?? "/login";
+}
+
 export async function getCurrentUserAndProfile(): Promise<{
   userId: string;
   profile: Profile;
@@ -29,10 +39,13 @@ export async function getCurrentUserAndProfile(): Promise<{
   return { userId: user.id, profile };
 }
 
-export async function requireRole(role: UserRole) {
+export async function requireRole(role: UserRole | UserRole[]) {
   const { profile } = await getCurrentUserAndProfile();
-  if (profile.role !== role) {
-    redirect(role === "admin" ? "/dashboard" : "/admin/dashboard");
+  const allowed = Array.isArray(role) ? role : [role];
+
+  if (!allowed.includes(profile.role)) {
+    redirect(homeForRole(profile.role));
   }
+
   return profile;
 }

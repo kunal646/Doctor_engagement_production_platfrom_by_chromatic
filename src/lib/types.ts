@@ -1,6 +1,6 @@
 import { StoryboardSlide } from "@/lib/storyboard";
 
-export type UserRole = "admin" | "ops";
+export type UserRole = "admin" | "ops" | "supervisor";
 
 export type RequestStatus =
   | "form_submitted"

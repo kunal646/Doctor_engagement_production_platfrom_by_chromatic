@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { Profile } from "@/lib/types";
+import { Profile, UserRole } from "@/lib/types";
 import { updateSession } from "@/lib/supabase/middleware";
 
 const PUBLIC_ROUTES = ["/login"];
+
+const HOME_BY_ROLE: Record<UserRole, string> = {
+  admin: "/admin/dashboard",
+  ops: "/dashboard",
+  supervisor: "/supervisor/dashboard",
+};
+
+function homeFor(role: UserRole) {
+  return HOME_BY_ROLE[role] ?? "/login";
+}
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
@@ -34,33 +44,36 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  if (pathname === "/") {
-    return NextResponse.redirect(
-      new URL(
-        profile.role === "admin" ? "/admin/dashboard" : "/dashboard",
-        request.url,
-      ),
-    );
+  const home = homeFor(profile.role);
+
+  if (pathname === "/" || pathname.startsWith("/login")) {
+    return NextResponse.redirect(new URL(home, request.url));
   }
 
-  if (pathname.startsWith("/login")) {
-    return NextResponse.redirect(
-      new URL(
-        profile.role === "admin" ? "/admin/dashboard" : "/dashboard",
-        request.url,
-      ),
-    );
+  if (profile.role === "ops") {
+    if (pathname.startsWith("/admin") || pathname.startsWith("/supervisor")) {
+      return NextResponse.redirect(new URL(home, request.url));
+    }
   }
 
-  if (profile.role === "ops" && pathname.startsWith("/admin")) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+  if (profile.role === "supervisor") {
+    if (
+      pathname.startsWith("/admin") ||
+      pathname.startsWith("/dashboard") ||
+      pathname.startsWith("/requests")
+    ) {
+      return NextResponse.redirect(new URL(home, request.url));
+    }
   }
 
-  if (
-    profile.role === "admin" &&
-    (pathname.startsWith("/dashboard") || pathname.startsWith("/requests"))
-  ) {
-    return NextResponse.redirect(new URL("/admin/dashboard", request.url));
+  if (profile.role === "admin") {
+    if (
+      pathname.startsWith("/dashboard") ||
+      pathname.startsWith("/requests") ||
+      pathname.startsWith("/supervisor")
+    ) {
+      return NextResponse.redirect(new URL(home, request.url));
+    }
   }
 
   return response;

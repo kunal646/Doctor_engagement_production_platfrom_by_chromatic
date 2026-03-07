@@ -2,20 +2,35 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { MenuIcon, LayoutDashboardIcon, PlusCircleIcon, BuildingIcon, LogOutIcon } from "lucide-react";
+import {
+  MenuIcon,
+  LayoutDashboardIcon,
+  FilmIcon,
+  BuildingIcon,
+  LogOutIcon,
+  UsersIcon,
+} from "lucide-react";
 
 import { DashboardSidebar } from "@/components/sidebar";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import { signOutAction } from "@/lib/actions";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 
 const ICON_MAP: Record<string, React.ElementType> = {
   "/dashboard": LayoutDashboardIcon,
-  "/requests/new": PlusCircleIcon,
+  "/requests/new": FilmIcon,
   "/admin/dashboard": LayoutDashboardIcon,
   "/admin/companies": BuildingIcon,
+  "/supervisor/dashboard": LayoutDashboardIcon,
+  "/supervisor/operators": UsersIcon,
 };
 
 interface DashboardShellProps {
@@ -46,12 +61,13 @@ export function DashboardShell({
       </div>
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Mobile Header */}
-        <header className="flex h-14 items-center gap-4 border-b bg-background px-6 md:hidden">
+        {/* Top Bar — visible only on mobile */}
+        <header className="flex h-14 shrink-0 items-center gap-4 border-b bg-background px-4 md:hidden">
+          {/* Mobile: hamburger */}
           <Sheet>
             <SheetTrigger asChild>
-              <Button variant="outline" size="icon" className="shrink-0 md:hidden">
-                <MenuIcon className="h-5 w-5" />
+              <Button variant="ghost" size="icon" className="shrink-0 md:hidden">
+                <MenuIcon className="size-5" />
                 <span className="sr-only">Toggle navigation menu</span>
               </Button>
             </SheetTrigger>
@@ -75,7 +91,7 @@ export function DashboardShell({
                       size="sm"
                       className={cn(
                         "w-full justify-start gap-3",
-                        active && "bg-muted font-semibold"
+                        active && "bg-muted font-semibold",
                       )}
                       asChild
                     >
@@ -102,16 +118,33 @@ export function DashboardShell({
               </div>
             </SheetContent>
           </Sheet>
-          <div className="flex-1">
-            <h1 className="text-sm font-semibold">{title}</h1>
+
+          {/* Mobile: app name */}
+          <span className="text-sm font-semibold md:hidden">Doctor Engagement</span>
+
+          <div className="flex-1" />
+
+          {/* Right: user + sign out */}
+          <div className="flex items-center gap-1">
+            <span className="hidden text-sm text-muted-foreground sm:inline">
+              {subtitle}
+            </span>
+            <form action={signOutAction}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-2 text-muted-foreground"
+              >
+                <LogOutIcon className="size-4" />
+                <span className="hidden sm:inline">Sign out</span>
+              </Button>
+            </form>
           </div>
         </header>
 
-        {/* Main Content */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
-          <div className="mx-auto max-w-6xl space-y-8">
-            {children}
-          </div>
+        {/* Main — no padding, pages manage their own */}
+        <main className="flex-1 overflow-y-auto bg-muted/40">
+          {children}
         </main>
       </div>
     </div>

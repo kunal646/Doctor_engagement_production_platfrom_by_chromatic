@@ -190,13 +190,19 @@ export async function signInAction(formData: FormData) {
     .from("profiles")
     .select("role")
     .eq("id", user.id)
-    .single<{ role: "admin" | "ops" }>();
+    .single<{ role: "admin" | "ops" | "supervisor" }>();
 
   if (!profile) {
     return { error: "Profile not found. Ask admin to provision your account." };
   }
 
-  redirect(profile.role === "admin" ? "/admin/dashboard" : "/dashboard");
+  const destinations: Record<string, string> = {
+    admin: "/admin/dashboard",
+    ops: "/dashboard",
+    supervisor: "/supervisor/dashboard",
+  };
+
+  redirect(destinations[profile.role] ?? "/login");
 }
 
 export async function signOutAction() {
@@ -222,11 +228,11 @@ export async function createRequestAction(formData: FormData) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("company_id")
+    .select("company_id,role")
     .eq("id", user.id)
-    .single<{ company_id: string | null }>();
+    .single<{ company_id: string | null; role: string }>();
 
-  if (!profile?.company_id) {
+  if (!profile?.company_id || profile.role === "supervisor") {
     return;
   }
 
@@ -291,6 +297,15 @@ export async function addCommentAction(formData: FormData) {
     redirect("/login");
   }
 
+  const { data: userProfile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single<{ role: string }>();
+  if (userProfile?.role === "supervisor") {
+    return;
+  }
+
   const { data: request } = await supabase
     .from("requests")
     .select("status")
@@ -317,6 +332,7 @@ export async function addCommentAction(formData: FormData) {
 
   revalidatePath(`/requests/${requestId}`);
   revalidatePath(`/admin/requests/${requestId}`);
+  revalidatePath(`/supervisor/requests/${requestId}`);
 }
 
 export async function requestStoryboardRevisionAction(formData: FormData) {
@@ -332,6 +348,15 @@ export async function requestStoryboardRevisionAction(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) {
     redirect("/login");
+  }
+
+  const { data: actorProfile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single<{ role: string }>();
+  if (actorProfile?.role === "supervisor") {
+    return;
   }
 
   const { data: request } = await supabase
@@ -418,6 +443,7 @@ export async function requestStoryboardRevisionAction(formData: FormData) {
 
   revalidatePath(`/requests/${requestId}`);
   revalidatePath(`/admin/requests/${requestId}`);
+  revalidatePath(`/supervisor/requests/${requestId}`);
 }
 
 export async function approveStoryboardAction(formData: FormData) {
@@ -427,6 +453,22 @@ export async function approveStoryboardAction(formData: FormData) {
   }
 
   const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/login");
+  }
+  const { data: approverProfile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single<{ role: string }>();
+  if (approverProfile?.role === "supervisor") {
+    return;
+  }
+
   const { error } = await supabase
     .from("requests")
     .update({ status: "storyboard_approved" })
@@ -440,6 +482,7 @@ export async function approveStoryboardAction(formData: FormData) {
 
   revalidatePath(`/requests/${requestId}`);
   revalidatePath(`/admin/requests/${requestId}`);
+  revalidatePath(`/supervisor/requests/${requestId}`);
 }
 
 export async function updateRequestStatusAction(formData: FormData) {
@@ -464,6 +507,7 @@ export async function updateRequestStatusAction(formData: FormData) {
   revalidatePath("/admin/dashboard");
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath(`/requests/${requestId}`);
+  revalidatePath(`/supervisor/requests/${requestId}`);
 }
 
 export async function uploadStoryboardAction(formData: FormData) {
@@ -575,6 +619,7 @@ export async function uploadStoryboardAction(formData: FormData) {
 
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath(`/requests/${requestId}`);
+  revalidatePath(`/supervisor/requests/${requestId}`);
   return { success: true };
 }
 
@@ -639,7 +684,9 @@ export async function uploadVideoAction(formData: FormData) {
 
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath(`/requests/${requestId}`);
+  revalidatePath(`/supervisor/requests/${requestId}`);
   revalidatePath("/admin/dashboard");
+  revalidatePath("/supervisor/dashboard");
   return { success: true };
 }
 
@@ -648,8 +695,13 @@ export async function createCompanyWithOpsAction(formData: FormData) {
   const fullName = String(formData.get("full_name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
+  const role = String(formData.get("role") ?? "ops").trim();
 
   if (!companyName || !fullName || !email || password.length < 8) {
+    return;
+  }
+
+  if (role !== "ops" && role !== "supervisor") {
     return;
   }
 
@@ -682,8 +734,53 @@ export async function createCompanyWithOpsAction(formData: FormData) {
     id: createdUser.user.id,
     email,
     full_name: fullName,
-    role: "ops",
+    role,
     company_id: company.id,
+  });
+
+  if (profileError) {
+    console.error(profileError.message);
+    return;
+  }
+
+  revalidatePath("/admin/companies");
+}
+
+export async function addUserToCompanyAction(formData: FormData) {
+  const companyId = String(formData.get("company_id") ?? "").trim();
+  const fullName = String(formData.get("full_name") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  const role = String(formData.get("role") ?? "ops").trim();
+
+  if (!companyId || !fullName || !email || password.length < 8) {
+    return;
+  }
+
+  if (role !== "ops" && role !== "supervisor") {
+    return;
+  }
+
+  const adminClient = createAdminClient();
+
+  const { data: createdUser, error: userError } =
+    await adminClient.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    });
+
+  if (userError || !createdUser.user) {
+    console.error(userError?.message ?? "Could not create auth user.");
+    return;
+  }
+
+  const { error: profileError } = await adminClient.from("profiles").insert({
+    id: createdUser.user.id,
+    email,
+    full_name: fullName,
+    role,
+    company_id: companyId,
   });
 
   if (profileError) {

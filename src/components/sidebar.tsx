@@ -4,11 +4,12 @@ import * as React from "react";
 import Link from "next/link";
 import {
   LayoutDashboardIcon,
-  PlusCircleIcon,
+  FilmIcon,
   BuildingIcon,
   LogOutIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  UsersIcon,
 } from "lucide-react";
 
 import { signOutAction } from "@/lib/actions";
@@ -23,9 +24,11 @@ import { cn } from "@/lib/utils";
 
 const ICON_MAP: Record<string, React.ElementType> = {
   "/dashboard": LayoutDashboardIcon,
-  "/requests/new": PlusCircleIcon,
+  "/requests/new": FilmIcon,
   "/admin/dashboard": LayoutDashboardIcon,
   "/admin/companies": BuildingIcon,
+  "/supervisor/dashboard": LayoutDashboardIcon,
+  "/supervisor/operators": UsersIcon,
 };
 
 interface SidebarItem {

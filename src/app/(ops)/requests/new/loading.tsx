@@ -1,19 +1,27 @@
+import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent } from "@/components/ui/card";
+
 export default function NewRequestLoading() {
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-2xl space-y-6 px-4 py-6 md:px-6 md:py-8 lg:px-8">
       <div className="space-y-2">
-        <div className="h-8 w-48 animate-pulse rounded-md bg-muted" />
-        <div className="h-4 w-72 animate-pulse rounded-md bg-muted" />
+        <Skeleton className="h-7 w-40" />
+        <Skeleton className="h-4 w-72" />
       </div>
-      <div className="rounded-xl border bg-card p-6 space-y-5">
-        {[...Array(6)].map((_, i) => (
-          <div key={i} className="space-y-2">
-            <div className="h-4 w-32 animate-pulse rounded bg-muted" />
-            <div className="h-9 w-full animate-pulse rounded-md bg-muted" />
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="space-y-5">
+            {[...Array(7)].map((_, i) => (
+              <div key={i} className="space-y-2">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ))}
+            <Skeleton className="h-10 w-36" />
           </div>
-        ))}
-        <div className="h-9 w-36 animate-pulse rounded-md bg-muted" />
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

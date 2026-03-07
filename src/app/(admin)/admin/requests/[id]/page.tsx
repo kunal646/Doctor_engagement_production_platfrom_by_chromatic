@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeftIcon, FileTextIcon, VideoIcon } from "lucide-react";
+import { ArrowLeftIcon, FilmIcon, VideoIcon } from "lucide-react";
 
 import { AdminUploadForms } from "@/components/admin-upload-forms";
 import { CommentThread } from "@/components/comment-thread";
@@ -119,6 +119,7 @@ export default async function AdminRequestDetailPage({
   }
 
   return (
+    <div className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-8 lg:px-8">
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
@@ -221,7 +222,7 @@ export default async function AdminRequestDetailPage({
               <Card className="border-dashed">
                 <CardContent className="flex flex-col items-center justify-center py-10 text-center">
                   <div className="rounded-full bg-muted p-3">
-                    <FileTextIcon className="size-6 text-muted-foreground" />
+                    <FilmIcon className="size-6 text-muted-foreground" />
                   </div>
                   <p className="mt-2 text-sm font-medium">No storyboard uploaded</p>
                 </CardContent>
@@ -260,6 +261,7 @@ export default async function AdminRequestDetailPage({
           </Card>
         </div>
       </div>
+    </div>
     </div>
   );
 }

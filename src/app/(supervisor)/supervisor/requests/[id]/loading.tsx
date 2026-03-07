@@ -1,11 +1,10 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 
-export default function RequestDetailLoading() {
+export default function SupervisorRequestDetailLoading() {
   return (
     <div className="flex flex-col">
 
-      {/* Sticky header skeleton */}
       <div className="border-b px-4 py-3 md:px-6 lg:px-8">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -15,20 +14,15 @@ export default function RequestDetailLoading() {
           </div>
           <div className="flex items-center gap-2">
             <Skeleton className="hidden h-4 w-16 sm:block" />
-            <Skeleton className="h-8 w-32" />
-            <Skeleton className="h-8 w-20" />
+            <Skeleton className="h-6 w-24 rounded-full" />
           </div>
         </div>
       </div>
 
-      {/* Page content */}
       <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-6 md:py-8 lg:px-8">
         <div className="grid gap-8 lg:grid-cols-3">
 
-          {/* Main content — storyboard + comments */}
           <div className="flex flex-col lg:col-span-2">
-
-            {/* Storyboard section */}
             <section className="pb-6">
               <div className="mb-4 flex items-center justify-between">
                 <Skeleton className="h-4 w-32" />
@@ -39,25 +33,12 @@ export default function RequestDetailLoading() {
                   <div key={i} className="py-5 first:pt-0">
                     <Skeleton className="mb-3 h-4 w-14" />
                     <Skeleton className="h-52 w-full rounded-lg" />
-                    <div className="mt-4 space-y-2">
-                      <Skeleton className="h-4 w-32" />
-                      <div className="flex flex-wrap gap-2">
-                        <Skeleton className="h-8 w-28" />
-                        <Skeleton className="h-8 w-36" />
-                        <Skeleton className="h-8 w-28" />
-                      </div>
-                    </div>
                   </div>
                 ))}
-              </div>
-              <div className="mt-4 flex items-center justify-between">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-4 w-12" />
               </div>
               <Separator className="mt-6" />
             </section>
 
-            {/* Comments section */}
             <section className="pt-2">
               <Skeleton className="mb-4 h-4 w-20" />
               <div className="space-y-4">
@@ -77,9 +58,12 @@ export default function RequestDetailLoading() {
             </section>
           </div>
 
-          {/* Sidebar */}
           <div className="flex flex-col gap-4 border-t pt-6 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
             <Skeleton className="h-4 w-28" />
+            <div className="space-y-1">
+              <Skeleton className="h-3 w-16" />
+              <Skeleton className="h-4 w-32" />
+            </div>
             <div className="space-y-1">
               <Skeleton className="h-3 w-16" />
               <Skeleton className="h-4 w-40" />
