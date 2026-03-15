@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { DashboardSidebar } from "@/components/sidebar";
+import { PushNotificationsButton } from "@/components/push-notifications-button";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -105,6 +106,7 @@ export function DashboardShell({
               </nav>
               <Separator />
               <div className="p-4">
+                <PushNotificationsButton />
                 <form action={signOutAction}>
                   <Button
                     variant="ghost"
@@ -126,6 +128,9 @@ export function DashboardShell({
 
           {/* Right: user + sign out */}
           <div className="flex items-center gap-1">
+            <div className="hidden sm:block">
+              <PushNotificationsButton compact />
+            </div>
             <span className="hidden text-sm text-muted-foreground sm:inline">
               {subtitle}
             </span>

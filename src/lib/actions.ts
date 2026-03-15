@@ -4,10 +4,11 @@ import JSZip from "jszip";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { REQUEST_FORM_FIELDS } from "@/config/request-form";
 import { REQUEST_STATUSES } from "@/lib/constants";
+import { sendPushNotifications } from "@/lib/push-notifications";
 import {
   buildStoryboardRevisionSummary,
-  isStoryboardIssue,
   StoryboardRevisionSelection,
   StoryboardSlide,
 } from "@/lib/storyboard";
@@ -137,25 +138,23 @@ function parseStoryboardRevisionSelections(rawValue: string) {
     }
 
     const maybeOrder = "order" in item ? item.order : undefined;
-    const maybeIssues = "issues" in item ? item.issues : undefined;
+    const maybeComment = "comment" in item ? item.comment : undefined;
 
     if (
       typeof maybeOrder !== "number" ||
       !Number.isInteger(maybeOrder) ||
       maybeOrder <= 0 ||
-      !Array.isArray(maybeIssues)
+      typeof maybeComment !== "string"
     ) {
       throw new Error("Invalid storyboard review payload.");
     }
 
-    const issues = Array.from(
-      new Set(maybeIssues.filter((issue): issue is string => typeof issue === "string")),
-    ).filter(isStoryboardIssue);
+    const comment = maybeComment.trim();
 
-    if (issues.length > 0) {
+    if (comment.length > 0) {
       selections.push({
         order: maybeOrder,
-        issues,
+        comment,
       });
     }
   }
@@ -211,31 +210,7 @@ export async function signOutAction() {
   redirect("/login");
 }
 
-export async function createRequestAction(formData: FormData) {
-  const doctorName = String(formData.get("doctor_name") ?? "").trim();
-  if (!doctorName) {
-    return;
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("company_id,role")
-    .eq("id", user.id)
-    .single<{ company_id: string | null; role: string }>();
-
-  if (!profile?.company_id || profile.role === "supervisor") {
-    return;
-  }
-
+function buildRequestFormData(formData: FormData) {
   const data: JsonRecord = {};
   for (const [key, value] of formData.entries()) {
     if (key.startsWith("field_")) {
@@ -266,20 +241,175 @@ export async function createRequestAction(formData: FormData) {
     data.current_photo_path = currentPhotoPath;
   }
 
-  const { error } = await supabase.from("requests").insert({
-    doctor_name: doctorName,
-    company_id: profile.company_id,
-    created_by: user.id,
-    status: "form_submitted",
-    form_data: data,
-  });
+  const journeyAudioPath = String(formData.get("journey_audio_path") ?? "").trim();
+  if (journeyAudioPath) {
+    data.journey_audio_path = journeyAudioPath;
+  }
 
-  if (error) {
-    console.error(error.message);
+  return data;
+}
+
+function validateFinalRequestSubmission(formData: FormData, data: JsonRecord) {
+  const doctorName = String(formData.get("doctor_name") ?? "").trim();
+  if (!doctorName) {
+    return "Please enter the doctor's full name.";
+  }
+
+  const requiredFields = REQUEST_FORM_FIELDS.filter(
+    (field) => field.active !== false && field.required && field.key !== "personal_journey",
+  );
+  for (const field of requiredFields) {
+    const value = typeof data[field.key] === "string" ? String(data[field.key]).trim() : "";
+    if (!value) {
+      return `Please complete ${field.label}.`;
+    }
+  }
+
+  if (!String(data.young_photo_path ?? "").trim()) {
+    return "Please upload a younger photo.";
+  }
+  if (!String(data.current_photo_path ?? "").trim()) {
+    return "Please upload a current photo.";
+  }
+
+  const journeyInputMode = String(formData.get("journey_input_mode") ?? "audio");
+  if (journeyInputMode === "text") {
+    if (!String(data.personal_journey ?? "").trim()) {
+      return "Please type the journey answer.";
+    }
+  } else if (!String(data.journey_audio_path ?? "").trim()) {
+    return "Please upload an audio note about the journey.";
+  }
+
+  return "";
+}
+
+async function upsertRequestAction(formData: FormData, status: "draft" | "form_submitted") {
+  const doctorName = String(formData.get("doctor_name") ?? "").trim();
+  if (!doctorName) {
+    throw new Error("Please enter the doctor's full name.");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("company_id,role")
+    .eq("id", user.id)
+    .single<{ company_id: string | null; role: string }>();
+
+  if (!profile?.company_id || profile.role === "supervisor") {
     return;
   }
 
+  const data = buildRequestFormData(formData);
+  if (status === "form_submitted") {
+    const validationError = validateFinalRequestSubmission(formData, data);
+    if (validationError) {
+      throw new Error(validationError);
+    }
+  }
+
+  const adminClient = createAdminClient();
+  const requestId = String(formData.get("request_id") ?? "").trim();
+  let savedRequestId = requestId;
+
+  if (requestId) {
+    const { data: existingRequest } = await adminClient
+      .from("requests")
+      .select("id,created_by,status")
+      .eq("id", requestId)
+      .maybeSingle<{ id: string; created_by: string; status: RequestStatus }>();
+
+    if (!existingRequest || existingRequest.created_by !== user.id || existingRequest.status !== "draft") {
+      throw new Error("Only your own drafts can be updated.");
+    }
+
+    const { error } = await adminClient
+      .from("requests")
+      .update({
+        doctor_name: doctorName,
+        status,
+        form_data: data,
+      })
+      .eq("id", requestId);
+
+    if (error) {
+      console.error(error.message);
+      throw new Error(error.message);
+    }
+  } else {
+    const { data: insertedRequest, error } = await adminClient
+      .from("requests")
+      .insert({
+        doctor_name: doctorName,
+        company_id: profile.company_id,
+        created_by: user.id,
+        status,
+        form_data: data,
+      })
+      .select("id")
+      .single<{ id: string }>();
+
+    if (error || !insertedRequest) {
+      console.error(error?.message ?? "Failed to save request.");
+      throw new Error(error?.message ?? "Failed to save request.");
+    }
+
+    savedRequestId = insertedRequest.id;
+  }
+
+  if (status === "form_submitted" && savedRequestId) {
+    await adminClient
+      .from("doctor_review_sessions")
+      .update({ status: "revoked" })
+      .eq("request_id", savedRequestId)
+      .eq("status", "active");
+  }
+
+  revalidatePath("/dashboard");
+  if (savedRequestId) {
+    revalidatePath(`/requests/${savedRequestId}`);
+  }
+
+  if (status === "form_submitted" && savedRequestId) {
+    await sendPushNotifications(
+      { roles: ["admin"] },
+      {
+        title: "New Request Submitted",
+        body: `${doctorName} is ready for production intake. Review the submitted brief now.`,
+        urlsByRole: {
+          admin: `/admin/requests/${savedRequestId}`,
+        },
+        tag: `request-submitted-${savedRequestId}`,
+      },
+    );
+  }
+
+  if (status === "draft") {
+    redirect(savedRequestId ? `/requests/${savedRequestId}` : "/dashboard");
+  }
+
   redirect("/dashboard");
+}
+
+export async function saveRequestDraftAction(formData: FormData) {
+  return upsertRequestAction(formData, "draft");
+}
+
+export async function submitRequestAction(formData: FormData) {
+  return upsertRequestAction(formData, "form_submitted");
+}
+
+export async function createRequestAction(formData: FormData) {
+  return submitRequestAction(formData);
 }
 
 export async function addCommentAction(formData: FormData) {
@@ -529,6 +659,12 @@ export async function uploadStoryboardAction(formData: FormData) {
     redirect("/login");
   }
 
+  const { data: requestDetails } = await supabase
+    .from("requests")
+    .select("doctor_name,created_by,company_id")
+    .eq("id", requestId)
+    .maybeSingle<{ doctor_name: string; created_by: string; company_id: string }>();
+
   const { data: latest } = await supabase
     .from("storyboards")
     .select("version")
@@ -607,6 +743,13 @@ export async function uploadStoryboardAction(formData: FormData) {
     return { error: insertError.message };
   }
 
+  const adminClient = createAdminClient();
+  await adminClient
+    .from("doctor_storyboard_review_sessions")
+    .update({ status: "revoked" })
+    .eq("request_id", requestId)
+    .eq("status", "active");
+
   const { error: requestError } = await supabase
     .from("requests")
     .update({ status: "storyboard_review" })
@@ -620,6 +763,26 @@ export async function uploadStoryboardAction(formData: FormData) {
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath(`/requests/${requestId}`);
   revalidatePath(`/supervisor/requests/${requestId}`);
+
+  if (requestDetails) {
+    await sendPushNotifications(
+      {
+        userIds: [requestDetails.created_by],
+        companyId: requestDetails.company_id,
+        roles: ["supervisor"],
+      },
+      {
+        title: "Storyboard Ready for Review",
+        body: `The storyboard for ${requestDetails.doctor_name} is ready. Review it and share it with the doctor if needed.`,
+        urlsByRole: {
+          ops: `/requests/${requestId}`,
+          supervisor: `/supervisor/requests/${requestId}`,
+        },
+        tag: `storyboard-ready-${requestId}`,
+      },
+    );
+  }
+
   return { success: true };
 }
 
@@ -638,6 +801,12 @@ export async function uploadVideoAction(formData: FormData) {
   if (!user) {
     redirect("/login");
   }
+
+  const { data: requestDetails } = await supabase
+    .from("requests")
+    .select("doctor_name,created_by,company_id")
+    .eq("id", requestId)
+    .maybeSingle<{ doctor_name: string; created_by: string; company_id: string }>();
 
   let filePath = providedPath;
   if (!filePath) {
@@ -687,6 +856,26 @@ export async function uploadVideoAction(formData: FormData) {
   revalidatePath(`/supervisor/requests/${requestId}`);
   revalidatePath("/admin/dashboard");
   revalidatePath("/supervisor/dashboard");
+
+  if (requestDetails) {
+    await sendPushNotifications(
+      {
+        userIds: [requestDetails.created_by],
+        companyId: requestDetails.company_id,
+        roles: ["supervisor"],
+      },
+      {
+        title: "Final Video Delivered",
+        body: `The final landscape video for ${requestDetails.doctor_name} is ready to review and download.`,
+        urlsByRole: {
+          ops: `/requests/${requestId}`,
+          supervisor: `/supervisor/requests/${requestId}`,
+        },
+        tag: `video-delivered-${requestId}`,
+      },
+    );
+  }
+
   return { success: true };
 }
 

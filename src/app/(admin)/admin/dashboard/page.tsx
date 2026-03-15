@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   LayoutListIcon,
   CheckCircle2Icon,
+  DownloadIcon,
   TriangleAlertIcon,
   SlidersHorizontalIcon,
   BuildingIcon,
@@ -40,6 +41,7 @@ export default async function AdminDashboardPage({
   let requestQuery = supabase
     .from("requests")
     .select("*, companies(name)")
+    .neq("status", "draft")
     .order("created_at", { ascending: false });
 
   if (status && status !== "all") {
@@ -61,6 +63,8 @@ export default async function AdminDashboardPage({
   const totalRequests = requests?.length ?? 0;
   const deliveredCount =
     requests?.filter((item) => item.status === "video_delivered").length ?? 0;
+  const downloadedCount =
+    requests?.filter((item) => Boolean(item.video_downloaded_at)).length ?? 0;
   const pendingCount =
     requests?.filter((item) => item.status !== "video_delivered").length ?? 0;
 
@@ -77,7 +81,7 @@ export default async function AdminDashboardPage({
         </div>
 
         {/* Metric cards */}
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Volume</CardTitle>
@@ -108,6 +112,17 @@ export default async function AdminDashboardPage({
             <CardContent>
               <div className="text-2xl font-semibold">{deliveredCount}</div>
               <p className="text-xs text-muted-foreground">Completed videos</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Downloaded</CardTitle>
+              <DownloadIcon className="size-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-semibold">{downloadedCount}</div>
+              <p className="text-xs text-muted-foreground">Videos downloaded at least once</p>
             </CardContent>
           </Card>
         </div>
@@ -163,6 +178,7 @@ export default async function AdminDashboardPage({
                     <TableHead className="pl-4 md:pl-6">Doctor</TableHead>
                     <TableHead>Company</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead className="hidden lg:table-cell">Downloaded</TableHead>
                     <TableHead className="hidden md:table-cell">Submitted</TableHead>
                     <TableHead className="pr-4 text-right md:pr-6">Action</TableHead>
                   </TableRow>
@@ -179,6 +195,11 @@ export default async function AdminDashboardPage({
                       <TableCell>
                         <StatusBadge status={request.status} />
                       </TableCell>
+                      <TableCell className="hidden text-muted-foreground lg:table-cell">
+                        {request.video_downloaded_at
+                          ? new Date(request.video_downloaded_at).toLocaleDateString()
+                          : "-"}
+                      </TableCell>
                       <TableCell className="hidden text-muted-foreground md:table-cell">
                         {new Date(request.created_at).toLocaleDateString()}
                       </TableCell>
@@ -192,7 +213,7 @@ export default async function AdminDashboardPage({
                   {(!requests || requests.length === 0) && (
                     <TableRow>
                       <TableCell
-                        colSpan={5}
+                        colSpan={6}
                         className="h-24 text-center text-muted-foreground"
                       >
                         No requests found.

@@ -14,6 +14,7 @@ import {
 
 import { signOutAction } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
+import { PushNotificationsButton } from "@/components/push-notifications-button";
 import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
@@ -142,6 +143,18 @@ export function DashboardSidebar({
       <Separator />
 
       <div className="p-2">
+        {isCollapsed ? (
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <div>
+                <PushNotificationsButton compact />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="right">Enable Notifications</TooltipContent>
+          </Tooltip>
+        ) : (
+          <PushNotificationsButton />
+        )}
         {isCollapsed ? (
           <Tooltip delayDuration={0}>
             <TooltipTrigger asChild>

@@ -8,27 +8,9 @@ export interface StoryboardSlideWithUrl extends StoryboardSlide {
   url: string;
 }
 
-export const STORYBOARD_ISSUES = ["face", "background", "outfit"] as const;
-
-export type StoryboardIssue = (typeof STORYBOARD_ISSUES)[number];
-
 export interface StoryboardRevisionSelection {
   order: number;
-  issues: StoryboardIssue[];
-}
-
-const STORYBOARD_ISSUE_LABELS: Record<StoryboardIssue, string> = {
-  face: "Improve face",
-  background: "Improve background",
-  outfit: "Improve outfit",
-};
-
-export function getStoryboardIssueLabel(issue: StoryboardIssue) {
-  return STORYBOARD_ISSUE_LABELS[issue];
-}
-
-export function isStoryboardIssue(value: string): value is StoryboardIssue {
-  return STORYBOARD_ISSUES.includes(value as StoryboardIssue);
+  comment: string;
 }
 
 export function buildStoryboardRevisionSummary(
@@ -37,9 +19,9 @@ export function buildStoryboardRevisionSummary(
   const normalizedSelections = selections
     .map((selection) => ({
       order: selection.order,
-      issues: Array.from(new Set(selection.issues)),
+      comment: selection.comment.trim(),
     }))
-    .filter((selection) => selection.issues.length > 0)
+    .filter((selection) => selection.comment.length > 0)
     .sort((a, b) => a.order - b.order);
 
   if (normalizedSelections.length === 0) {
@@ -51,7 +33,7 @@ export function buildStoryboardRevisionSummary(
     "",
     ...normalizedSelections.flatMap((selection) => [
       `Shot ${selection.order}`,
-      ...selection.issues.map((issue) => `- ${getStoryboardIssueLabel(issue)}`),
+      selection.comment,
       "",
     ]),
   ]

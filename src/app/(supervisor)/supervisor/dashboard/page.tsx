@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   LayoutListIcon,
   CheckCircle2Icon,
+  DownloadIcon,
   TriangleAlertIcon,
   UsersIcon,
   SearchIcon,
@@ -58,6 +59,7 @@ export default async function SupervisorDashboardPage({
     .from("requests")
     .select("*")
     .eq("company_id", profile.company_id!)
+    .neq("status", "draft")
     .order("created_at", { ascending: false });
 
   if (query) {
@@ -79,6 +81,8 @@ export default async function SupervisorDashboardPage({
     requests?.filter(
       (r) => r.status === "storyboard_review" || r.status === "changes_requested",
     ).length ?? 0;
+  const downloadedCount =
+    requests?.filter((r) => Boolean(r.video_downloaded_at)).length ?? 0;
   const totalOperators = operators?.length ?? 0;
 
   return (
@@ -98,7 +102,7 @@ export default async function SupervisorDashboardPage({
           </Badge>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Requests</CardTitle>
@@ -140,6 +144,17 @@ export default async function SupervisorDashboardPage({
             <CardContent>
               <div className="text-2xl font-semibold">{deliveredCount}</div>
               <p className="text-xs text-muted-foreground">Completed deliveries</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Videos Downloaded</CardTitle>
+              <DownloadIcon className="size-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-semibold">{downloadedCount}</div>
+              <p className="text-xs text-muted-foreground">Downloaded at least once</p>
             </CardContent>
           </Card>
         </div>
@@ -203,6 +218,7 @@ export default async function SupervisorDashboardPage({
                     <TableHead className="pl-4 md:pl-6">Doctor Name</TableHead>
                     <TableHead>Operator</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead className="hidden lg:table-cell">Downloaded</TableHead>
                     <TableHead className="hidden md:table-cell">Submitted</TableHead>
                     <TableHead className="pr-4 text-right md:pr-6">Action</TableHead>
                   </TableRow>
@@ -219,6 +235,11 @@ export default async function SupervisorDashboardPage({
                       <TableCell>
                         <StatusBadge status={request.status} />
                       </TableCell>
+                      <TableCell className="hidden text-muted-foreground lg:table-cell">
+                        {request.video_downloaded_at
+                          ? new Date(request.video_downloaded_at).toLocaleDateString()
+                          : "-"}
+                      </TableCell>
                       <TableCell className="hidden text-muted-foreground md:table-cell">
                         {new Date(request.created_at).toLocaleDateString()}
                       </TableCell>
@@ -232,7 +253,7 @@ export default async function SupervisorDashboardPage({
                   {(!requests || requests.length === 0) && (
                     <TableRow>
                       <TableCell
-                        colSpan={5}
+                        colSpan={6}
                         className="h-24 text-center text-muted-foreground"
                       >
                         No requests found.

@@ -49,6 +49,10 @@ export default async function SupervisorRequestDetailPage({
     notFound();
   }
 
+  if (request.status === "draft") {
+    notFound();
+  }
+
   const { data: createdByProfile } = await supabase
     .from("profiles")
     .select("full_name,email")
@@ -102,6 +106,13 @@ export default async function SupervisorRequestDetailPage({
     .select("*")
     .eq("request_id", id)
     .maybeSingle<VideoRow>();
+  const { data: videoDownloadedByProfile } = request.video_downloaded_by
+    ? await supabase
+        .from("profiles")
+        .select("full_name,email")
+        .eq("id", request.video_downloaded_by)
+        .maybeSingle<{ full_name: string | null; email: string | null }>()
+    : { data: null };
   const videoUrl = video?.storage_path
     ? (
         await supabase.storage
@@ -130,12 +141,22 @@ export default async function SupervisorRequestDetailPage({
     typeof request.form_data.current_photo_path === "string"
       ? request.form_data.current_photo_path
       : "";
+  const journeyAudioPath =
+    typeof request.form_data.journey_audio_path === "string"
+      ? request.form_data.journey_audio_path
+      : "";
   const youngPhotoUrl = youngPhotoPath ? signedAssetUrls.get(youngPhotoPath) ?? null : null;
   const currentPhotoUrl = currentPhotoPath ? signedAssetUrls.get(currentPhotoPath) ?? null : null;
+  const journeyAudioUrl = journeyAudioPath
+    ? signedAssetUrls.get(journeyAudioPath) ?? null
+    : null;
 
   const requestDetails = Object.entries(request.form_data).filter(
     ([key]) =>
-      key !== "asset_paths" && key !== "young_photo_path" && key !== "current_photo_path",
+      key !== "asset_paths" &&
+      key !== "young_photo_path" &&
+      key !== "current_photo_path" &&
+      key !== "journey_audio_path",
   );
 
   const hasSlideStoryboard = hasSlideMetadata;
@@ -179,7 +200,11 @@ export default async function SupervisorRequestDetailPage({
                 <h2 className="mb-4 flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <VideoIcon className="size-4" /> Final Video
                 </h2>
-                <VideoPlayer url={videoUrl} />
+                <VideoPlayer
+                  url={videoUrl}
+                  requestId={request.id}
+                  initialDownloaded={Boolean(request.video_downloaded_at)}
+                />
                 <Separator className="mt-6" />
               </section>
             )}
@@ -249,6 +274,16 @@ export default async function SupervisorRequestDetailPage({
                   </span>
                   <span>{new Date(request.created_at).toLocaleString()}</span>
                 </div>
+                <div className="grid gap-1">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Video Downloaded
+                  </span>
+                  <span>
+                    {request.video_downloaded_at
+                      ? `${new Date(request.video_downloaded_at).toLocaleString()}${videoDownloadedByProfile ? ` by ${videoDownloadedByProfile.full_name || videoDownloadedByProfile.email || "User"}` : ""}`
+                      : "Not yet"}
+                  </span>
+                </div>
                 <Separator />
                 {requestDetails.map(([key, value]) => (
                   <div key={key} className="grid gap-1">
@@ -279,6 +314,20 @@ export default async function SupervisorRequestDetailPage({
                             : []),
                         ]}
                       />
+                    </div>
+                  </>
+                ) : null}
+                {journeyAudioUrl ? (
+                  <>
+                    <Separator />
+                    <div className="grid gap-3">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        Journey Audio
+                      </span>
+                      <audio controls preload="none" className="w-full">
+                        <source src={journeyAudioUrl} />
+                        Your browser does not support audio playback.
+                      </audio>
                     </div>
                   </>
                 ) : null}

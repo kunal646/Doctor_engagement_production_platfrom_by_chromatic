@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeftIcon, FilmIcon, VideoIcon } from "lucide-react";
+import { ArrowLeftIcon, FilmIcon, PencilIcon, VideoIcon } from "lucide-react";
 
 import { REQUEST_FORM_FIELDS } from "@/config/request-form";
 import { CommentThread } from "@/components/comment-thread";
+import { DoctorReviewLinkPanel } from "@/components/doctor-review-link-panel";
+import { DoctorStoryboardReviewLinkPanel } from "@/components/doctor-storyboard-review-link-panel";
 import { HeaderActions } from "@/components/header-actions";
 import { PhotoLightbox } from "@/components/photo-lightbox";
 import { PdfViewer } from "@/components/pdf-viewer";
@@ -14,9 +16,16 @@ import { StatusBadge } from "@/components/status-badge";
 import { VideoPlayer } from "@/components/video-player";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { countDoctorReviewChanges, isDoctorReviewExpired } from "@/lib/doctor-review";
+import {
+  countDoctorStoryboardReviewFeedback,
+} from "@/lib/doctor-storyboard-review";
 import { StoryboardSlideWithUrl } from "@/lib/storyboard";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
+  DoctorReviewSessionRow,
+  DoctorStoryboardReviewSessionRow,
   RequestRow,
   StoryboardCommentRow,
   StoryboardRow,
@@ -49,6 +58,22 @@ export default async function OpsRequestDetailPage({
   if (!request) {
     notFound();
   }
+
+  const adminClient = createAdminClient();
+  const { data: doctorReviewSession } = await adminClient
+    .from("doctor_review_sessions")
+    .select("*")
+    .eq("request_id", id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<DoctorReviewSessionRow>();
+  const { data: doctorStoryboardReviewSession } = await adminClient
+    .from("doctor_storyboard_review_sessions")
+    .select("*")
+    .eq("request_id", id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<DoctorStoryboardReviewSessionRow>();
 
   const { data: storyboards } = await supabase
     .from("storyboards")
@@ -97,6 +122,13 @@ export default async function OpsRequestDetailPage({
     .select("*")
     .eq("request_id", id)
     .maybeSingle<VideoRow>();
+  const { data: videoDownloadedByProfile } = request.video_downloaded_by
+    ? await supabase
+        .from("profiles")
+        .select("full_name,email")
+        .eq("id", request.video_downloaded_by)
+        .maybeSingle<{ full_name: string | null; email: string | null }>()
+    : { data: null };
   const videoUrl = video?.storage_path
     ? (
         await supabase.storage
@@ -125,12 +157,22 @@ export default async function OpsRequestDetailPage({
     typeof request.form_data.current_photo_path === "string"
       ? request.form_data.current_photo_path
       : "";
+  const journeyAudioPath =
+    typeof request.form_data.journey_audio_path === "string"
+      ? request.form_data.journey_audio_path
+      : "";
   const youngPhotoUrl = youngPhotoPath ? signedAssetUrls.get(youngPhotoPath) ?? null : null;
   const currentPhotoUrl = currentPhotoPath ? signedAssetUrls.get(currentPhotoPath) ?? null : null;
+  const journeyAudioUrl = journeyAudioPath
+    ? signedAssetUrls.get(journeyAudioPath) ?? null
+    : null;
 
   const requestDetails = Object.entries(request.form_data).filter(
     ([key]) =>
-      key !== "asset_paths" && key !== "young_photo_path" && key !== "current_photo_path",
+      key !== "asset_paths" &&
+      key !== "young_photo_path" &&
+      key !== "current_photo_path" &&
+      key !== "journey_audio_path",
   );
 
   const canComment =
@@ -142,6 +184,7 @@ export default async function OpsRequestDetailPage({
   const hasSlideStoryboard = hasSlideMetadata;
   const isInReview = request.status === "storyboard_review";
   const isSlideReview = isInReview && hasSlideStoryboard && hasRenderableSlides;
+  const isDraft = request.status === "draft";
 
   return (
     <ReviewProvider>
@@ -166,6 +209,14 @@ export default async function OpsRequestDetailPage({
               <span className="hidden font-mono text-xs text-muted-foreground sm:inline">
                 {request.id.slice(0, 8)}
               </span>
+              {isDraft ? (
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/requests/${request.id}/edit`}>
+                    <PencilIcon className="mr-2 size-4" />
+                    Edit Draft
+                  </Link>
+                </Button>
+              ) : null}
               {isInReview && (
                 <HeaderActions
                   requestId={request.id}
@@ -190,7 +241,11 @@ export default async function OpsRequestDetailPage({
                 <h2 className="mb-4 flex items-center gap-2 text-sm font-medium text-muted-foreground">
                   <VideoIcon className="size-4" /> Final Video
                 </h2>
-                <VideoPlayer url={videoUrl} />
+                <VideoPlayer
+                  url={videoUrl}
+                  requestId={request.id}
+                  initialDownloaded={Boolean(request.video_downloaded_at)}
+                />
                 <Separator className="mt-6" />
               </section>
             )}
@@ -259,6 +314,48 @@ export default async function OpsRequestDetailPage({
 
           {/* Sidebar */}
           <div className="flex flex-col gap-6 border-t pt-6 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+            {isDraft ? (
+              <DoctorReviewLinkPanel
+                requestId={request.id}
+                session={
+                  doctorReviewSession
+                    ? {
+                        id: doctorReviewSession.id,
+                        status: doctorReviewSession.status,
+                        expiresAt: doctorReviewSession.expires_at,
+                        submittedAt: doctorReviewSession.submitted_at,
+                        changedFieldCount: countDoctorReviewChanges(doctorReviewSession),
+                        isExpired:
+                          doctorReviewSession.status === "active" &&
+                          isDoctorReviewExpired(doctorReviewSession),
+                      }
+                    : null
+                }
+              />
+            ) : null}
+            {isInReview && (latestStoryboardSlides.length > 0 || latestStoryboardUrl) ? (
+              <DoctorStoryboardReviewLinkPanel
+                requestId={request.id}
+                session={
+                  doctorStoryboardReviewSession
+                    ? {
+                        id: doctorStoryboardReviewSession.id,
+                        status: doctorStoryboardReviewSession.status,
+                        decision: doctorStoryboardReviewSession.submitted_decision,
+                        expiresAt: doctorStoryboardReviewSession.expires_at,
+                        submittedAt: doctorStoryboardReviewSession.submitted_at,
+                        feedbackCount: countDoctorStoryboardReviewFeedback(
+                          doctorStoryboardReviewSession,
+                        ),
+                        isExpired:
+                          doctorStoryboardReviewSession.status === "active" &&
+                          isDoctorReviewExpired(doctorStoryboardReviewSession),
+                        storyboardVersion: doctorStoryboardReviewSession.storyboard_version,
+                      }
+                    : null
+                }
+              />
+            ) : null}
             <div>
               <h2 className="mb-4 text-sm font-medium">Request Details</h2>
               <div className="grid gap-4 text-sm">
@@ -267,6 +364,16 @@ export default async function OpsRequestDetailPage({
                     Submitted
                   </span>
                   <span>{new Date(request.created_at).toLocaleString()}</span>
+                </div>
+                <div className="grid gap-1">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Video Downloaded
+                  </span>
+                  <span>
+                    {request.video_downloaded_at
+                      ? `${new Date(request.video_downloaded_at).toLocaleString()}${videoDownloadedByProfile ? ` by ${videoDownloadedByProfile.full_name || videoDownloadedByProfile.email || "User"}` : ""}`
+                      : "Not yet"}
+                  </span>
                 </div>
                 <Separator />
                 {requestDetails.map(([key, value]) => (
@@ -298,6 +405,20 @@ export default async function OpsRequestDetailPage({
                             : []),
                         ]}
                       />
+                    </div>
+                  </>
+                ) : null}
+                {journeyAudioUrl ? (
+                  <>
+                    <Separator />
+                    <div className="grid gap-3">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        Journey Audio
+                      </span>
+                      <audio controls preload="none" className="w-full">
+                        <source src={journeyAudioUrl} />
+                        Your browser does not support audio playback.
+                      </audio>
                     </div>
                   </>
                 ) : null}

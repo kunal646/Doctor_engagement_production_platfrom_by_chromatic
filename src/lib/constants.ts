@@ -1,6 +1,7 @@
 import { RequestStatus } from "@/lib/types";
 
 export const REQUEST_STATUSES: RequestStatus[] = [
+  "draft",
   "form_submitted",
   "storyboard_in_progress",
   "storyboard_review",
@@ -11,6 +12,7 @@ export const REQUEST_STATUSES: RequestStatus[] = [
 ];
 
 export const STATUS_LABELS: Record<RequestStatus, string> = {
+  draft: "Draft",
   form_submitted: "Form Submitted",
   storyboard_in_progress: "Storyboard In Progress",
   storyboard_review: "Storyboard Review",

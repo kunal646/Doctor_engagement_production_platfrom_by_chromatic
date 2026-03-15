@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Profile, UserRole } from "@/lib/types";
 import { updateSession } from "@/lib/supabase/middleware";
 
-const PUBLIC_ROUTES = ["/login"];
+const PUBLIC_ROUTES = ["/login", "/doctor-review", "/doctor-storyboard-review"];
 
 const HOME_BY_ROLE: Record<UserRole, string> = {
   admin: "/admin/dashboard",

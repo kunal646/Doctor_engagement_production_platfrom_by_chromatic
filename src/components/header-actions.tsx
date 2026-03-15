@@ -49,7 +49,7 @@ export function HeaderActions({
       <div className="hidden items-center gap-4 text-sm sm:flex">
         {isSlideReview && (
           <span className="text-muted-foreground">
-            {shotsMarkedCount} shot{shotsMarkedCount === 1 ? "" : "s"} marked for changes
+            {shotsMarkedCount} shot{shotsMarkedCount === 1 ? "" : "s"} with feedback
           </span>
         )}
         <span className="text-muted-foreground">
@@ -74,7 +74,7 @@ export function HeaderActions({
               title={
                 revisionDisabled
                   ? isSlideReview
-                    ? "Select at least one change before requesting a revision."
+                    ? "Add feedback to at least one shot before requesting a revision."
                     : "Please add a comment before requesting a revision."
                   : undefined
               }

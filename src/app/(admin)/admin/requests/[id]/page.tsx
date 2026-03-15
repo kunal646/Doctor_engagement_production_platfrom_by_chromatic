@@ -47,6 +47,10 @@ export default async function AdminRequestDetailPage({
     notFound();
   }
 
+  if (request.status === "draft") {
+    notFound();
+  }
+
   const { data: storyboards } = await supabase
     .from("storyboards")
     .select("*")
@@ -94,6 +98,13 @@ export default async function AdminRequestDetailPage({
     .select("*")
     .eq("request_id", id)
     .maybeSingle<VideoRow>();
+  const { data: videoDownloadedByProfile } = request.video_downloaded_by
+    ? await supabase
+        .from("profiles")
+        .select("full_name,email")
+        .eq("id", request.video_downloaded_by)
+        .maybeSingle<{ full_name: string | null; email: string | null }>()
+    : { data: null };
   const videoUrl = video?.storage_path
     ? (
         await supabase.storage
@@ -105,6 +116,7 @@ export default async function AdminRequestDetailPage({
   const enrichedFormData: JsonRecord = { ...request.form_data };
   const rawAssetPaths = request.form_data.asset_paths;
   const assetPaths = Array.isArray(rawAssetPaths) ? rawAssetPaths : [];
+  const signedAssetUrlMap = new Map<string, string>();
   if (assetPaths.length > 0) {
     const signedAssetUrls: string[] = [];
     for (const path of assetPaths) {
@@ -113,9 +125,16 @@ export default async function AdminRequestDetailPage({
         .createSignedUrl(path, 60 * 60 * 24);
       if (data?.signedUrl) {
         signedAssetUrls.push(data.signedUrl);
+        signedAssetUrlMap.set(path, data.signedUrl);
       }
     }
     enrichedFormData.asset_urls = signedAssetUrls;
+  }
+  if (typeof request.form_data.journey_audio_path === "string") {
+    const signedJourneyAudioUrl = signedAssetUrlMap.get(request.form_data.journey_audio_path);
+    if (signedJourneyAudioUrl) {
+      enrichedFormData.journey_audio_url = signedJourneyAudioUrl;
+    }
   }
 
   return (
@@ -146,7 +165,7 @@ export default async function AdminRequestDetailPage({
               defaultValue={request.status}
               className="h-9 w-[180px] rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
-              {STATUS_OPTIONS.map((item) => (
+              {STATUS_OPTIONS.filter((item) => item.value !== "draft").map((item) => (
                 <option key={item.value} value={item.value}>
                   {item.label}
                 </option>
@@ -172,7 +191,11 @@ export default async function AdminRequestDetailPage({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <VideoPlayer url={videoUrl} />
+                <VideoPlayer
+                  url={videoUrl}
+                  requestId={request.id}
+                  initialDownloaded={Boolean(request.video_downloaded_at)}
+                />
               </CardContent>
             </Card>
           ) : null}
@@ -256,6 +279,14 @@ export default async function AdminRequestDetailPage({
               <div className="grid gap-1">
                 <span className="text-xs font-medium text-muted-foreground">Request ID</span>
                 <span className="font-mono text-xs">{request.id}</span>
+              </div>
+              <div className="grid gap-1">
+                <span className="text-xs font-medium text-muted-foreground">Video Downloaded</span>
+                <span>
+                  {request.video_downloaded_at
+                    ? `${new Date(request.video_downloaded_at).toLocaleString()}${videoDownloadedByProfile ? ` by ${videoDownloadedByProfile.full_name || videoDownloadedByProfile.email || "User"}` : ""}`
+                    : "Not yet"}
+                </span>
               </div>
             </CardContent>
           </Card>

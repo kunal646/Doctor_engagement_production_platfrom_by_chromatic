@@ -3,6 +3,7 @@ import {
   PlusIcon,
   LayoutListIcon,
   CheckCircle2Icon,
+  DownloadIcon,
   TriangleAlertIcon,
   SearchIcon,
   SlidersHorizontalIcon,
@@ -58,10 +59,13 @@ export default async function OpsDashboardPage({
   const totalRequests = requests?.length ?? 0;
   const deliveredCount =
     requests?.filter((r) => r.status === "video_delivered").length ?? 0;
+  const downloadedCount =
+    requests?.filter((r) => Boolean(r.video_downloaded_at)).length ?? 0;
   const inReviewCount =
     requests?.filter(
       (r) => r.status === "storyboard_review" || r.status === "changes_requested",
     ).length ?? 0;
+  const draftCount = requests?.filter((r) => r.status === "draft").length ?? 0;
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-8 lg:px-8">
@@ -84,7 +88,7 @@ export default async function OpsDashboardPage({
         </div>
 
         {/* Metric cards */}
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Requests</CardTitle>
@@ -92,7 +96,9 @@ export default async function OpsDashboardPage({
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-semibold">{totalRequests}</div>
-              <p className="text-xs text-muted-foreground">All time submissions</p>
+              <p className="text-xs text-muted-foreground">
+                Including {draftCount} draft{draftCount === 1 ? "" : "s"}
+              </p>
             </CardContent>
           </Card>
 
@@ -115,6 +121,17 @@ export default async function OpsDashboardPage({
             <CardContent>
               <div className="text-2xl font-semibold">{deliveredCount}</div>
               <p className="text-xs text-muted-foreground">Completed deliveries</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Videos Downloaded</CardTitle>
+              <DownloadIcon className="size-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-semibold">{downloadedCount}</div>
+              <p className="text-xs text-muted-foreground">Downloaded at least once</p>
             </CardContent>
           </Card>
         </div>
@@ -141,6 +158,7 @@ export default async function OpsDashboardPage({
                     className="h-10 w-full appearance-none rounded-md border border-input bg-background pl-8 pr-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-[180px]"
                   >
                     <option value="all">All Statuses</option>
+                    <option value="draft">Draft</option>
                     <option value="form_submitted">Form Submitted</option>
                     <option value="storyboard_in_progress">Storyboard In Progress</option>
                     <option value="storyboard_review">Storyboard Review</option>
@@ -163,6 +181,7 @@ export default async function OpsDashboardPage({
                   <TableRow>
                     <TableHead className="pl-4 md:pl-6">Doctor Name</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead className="hidden lg:table-cell">Downloaded</TableHead>
                     <TableHead className="hidden md:table-cell">Submitted</TableHead>
                     <TableHead className="pr-4 text-right md:pr-6">Action</TableHead>
                   </TableRow>
@@ -175,6 +194,11 @@ export default async function OpsDashboardPage({
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={request.status} />
+                      </TableCell>
+                      <TableCell className="hidden text-muted-foreground lg:table-cell">
+                        {request.video_downloaded_at
+                          ? new Date(request.video_downloaded_at).toLocaleDateString()
+                          : "-"}
                       </TableCell>
                       <TableCell className="hidden text-muted-foreground md:table-cell">
                         {new Date(request.created_at).toLocaleDateString()}
@@ -189,7 +213,7 @@ export default async function OpsDashboardPage({
                   {(!requests || requests.length === 0) && (
                     <TableRow>
                       <TableCell
-                        colSpan={4}
+                        colSpan={5}
                         className="h-24 text-center text-muted-foreground"
                       >
                         No requests found.

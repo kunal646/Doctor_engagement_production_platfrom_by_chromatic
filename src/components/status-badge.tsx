@@ -1,5 +1,6 @@
 import {
   ClipboardIcon,
+  FilePenLineIcon,
   PenLineIcon,
   EyeIcon,
   RotateCcwIcon,
@@ -17,6 +18,11 @@ const STATUS_CONFIG: Record<
   RequestStatus,
   { className: string; Icon: React.ElementType }
 > = {
+  draft: {
+    className:
+      "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300",
+    Icon: FilePenLineIcon,
+  },
   form_submitted: {
     className: "border-border bg-muted text-muted-foreground",
     Icon: ClipboardIcon,

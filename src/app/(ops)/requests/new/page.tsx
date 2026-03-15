@@ -10,7 +10,7 @@ export default function NewRequestPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">New Request</h1>
         <p className="text-sm text-muted-foreground">
-          Submit a new doctor engagement request for video production.
+          Start a new request, save it as a draft, or submit it when it is ready for production.
         </p>
       </div>
 
