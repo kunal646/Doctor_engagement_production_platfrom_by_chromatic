@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { REQUEST_FORM_FIELDS } from "@/config/request-form";
 import { saveRequestDraftAction, submitRequestAction } from "@/lib/actions";
@@ -100,6 +100,8 @@ export function NewRequestForm({
   const [formValues, setFormValues] = useState<Record<string, string>>(() =>
     buildInitialFormValues(initialDoctorName, initialFormData),
   );
+  const [youngPhotoPreviewUrl, setYoungPhotoPreviewUrl] = useState("");
+  const [currentPhotoPreviewUrl, setCurrentPhotoPreviewUrl] = useState("");
   const [journeyInputMode, setJourneyInputMode] = useState<"text" | "audio">(() => {
     if ((initialFormData?.personal_journey ?? "").trim()) {
       return "text";
@@ -123,6 +125,42 @@ export function NewRequestForm({
       ...current,
       [key]: value,
     }));
+  };
+
+  useEffect(() => {
+    return () => {
+      if (youngPhotoPreviewUrl) {
+        URL.revokeObjectURL(youngPhotoPreviewUrl);
+      }
+      if (currentPhotoPreviewUrl) {
+        URL.revokeObjectURL(currentPhotoPreviewUrl);
+      }
+    };
+  }, [currentPhotoPreviewUrl, youngPhotoPreviewUrl]);
+
+  const updatePreviewUrl = (
+    file: File | undefined,
+    currentPreviewUrl: string,
+    setPreviewUrl: (value: string) => void,
+  ) => {
+    if (currentPreviewUrl) {
+      URL.revokeObjectURL(currentPreviewUrl);
+    }
+
+    if (!file) {
+      setPreviewUrl("");
+      return;
+    }
+
+    setPreviewUrl(URL.createObjectURL(file));
+  };
+
+  const handleYoungPhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    updatePreviewUrl(event.target.files?.[0], youngPhotoPreviewUrl, setYoungPhotoPreviewUrl);
+  };
+
+  const handleCurrentPhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    updatePreviewUrl(event.target.files?.[0], currentPhotoPreviewUrl, setCurrentPhotoPreviewUrl);
   };
 
   const handleResumeUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -556,7 +594,24 @@ export function NewRequestForm({
                   replace it.
                 </p>
               ) : null}
-              <Input id="young_photo" name="young_photo" type="file" accept="image/*" required />
+              <Input
+                id="young_photo"
+                name="young_photo"
+                type="file"
+                accept="image/*"
+                required
+                onChange={handleYoungPhotoChange}
+              />
+              {youngPhotoPreviewUrl ? (
+                <div className="flex items-center gap-3 rounded-sm border p-3">
+                  <img
+                    src={youngPhotoPreviewUrl}
+                    alt="Preview of the uploaded younger photo"
+                    className="h-16 w-16 rounded-sm border object-cover"
+                  />
+                  <p className="text-sm text-muted-foreground">Preview of the selected younger photo.</p>
+                </div>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="field_current_photo_age">Current Age in Recent Photo *</Label>
@@ -585,7 +640,18 @@ export function NewRequestForm({
                 type="file"
                 accept="image/*"
                 required
+                onChange={handleCurrentPhotoChange}
               />
+              {currentPhotoPreviewUrl ? (
+                <div className="flex items-center gap-3 rounded-sm border p-3">
+                  <img
+                    src={currentPhotoPreviewUrl}
+                    alt="Preview of the uploaded current photo"
+                    className="h-16 w-16 rounded-sm border object-cover"
+                  />
+                  <p className="text-sm text-muted-foreground">Preview of the selected current photo.</p>
+                </div>
+              ) : null}
             </div>
           </div>
         </CardContent>
@@ -605,7 +671,7 @@ export function NewRequestForm({
         </Alert>
       ) : null}
 
-      <div className="sticky bottom-20 z-20 flex flex-col gap-3 border bg-background/95 p-4 backdrop-blur md:bottom-0 md:flex-row md:justify-end">
+      <div className="sticky bottom-0 z-20 mb-4 flex flex-col gap-3 border bg-background/95 px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] backdrop-blur md:mb-0 md:flex-row md:justify-end md:p-4">
         <Button
           type="submit"
           value="draft"

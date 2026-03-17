@@ -292,7 +292,7 @@ export async function extractResumeAutofill(file: File): Promise<ResumeAutofillR
     try {
       extractedText = await extractTextFromPdf(buffer);
     } catch {
-      warnings.push("PDF text extraction failed, so vision-based extraction was used.");
+      warnings.push("vision-based extraction successfully used.");
       inlinePart = {
         inline_data: {
           mime_type: mimeType,
@@ -302,7 +302,7 @@ export async function extractResumeAutofill(file: File): Promise<ResumeAutofillR
     }
 
     if (!inlinePart && extractedText.length < MIN_EXTRACTED_TEXT_LENGTH) {
-      warnings.push("PDF text was limited, so vision-based extraction was used.");
+      warnings.push("vision-based extraction successfully used.");
       inlinePart = {
         inline_data: {
           mime_type: mimeType,
