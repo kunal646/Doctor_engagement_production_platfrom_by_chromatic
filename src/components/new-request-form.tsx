@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { REQUEST_FORM_FIELDS } from "@/config/request-form";
 import { resolveRequestFieldCopy } from "@/config/request-form-doctor-type-copy";
@@ -128,6 +129,7 @@ export function NewRequestForm({
   initialJourneyAudioPath = "",
   initialAdditionalReferencePhotos,
 }: NewRequestFormProps) {
+  const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitIntent, setSubmitIntent] = useState<"draft" | "final" | null>(null);
@@ -519,13 +521,14 @@ export function NewRequestForm({
         formData.delete("journey_audio_path");
       }
 
-      if (intent === "draft") {
-        await saveRequestDraftAction(formData);
-      } else {
-        await submitRequestAction(formData);
-      }
+      const result =
+        intent === "draft"
+          ? await saveRequestDraftAction(formData)
+          : await submitRequestAction(formData);
       setIsSubmitting(false);
       setSubmitIntent(null);
+      router.push(result.redirectTo);
+      router.refresh();
     } catch (submissionError) {
       setError(
         submissionError instanceof Error

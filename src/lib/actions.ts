@@ -326,7 +326,14 @@ function validateFinalRequestSubmission(formData: FormData, data: JsonRecord) {
   return "";
 }
 
-async function upsertRequestAction(formData: FormData, status: "draft" | "form_submitted") {
+type UpsertRequestActionResult = {
+  redirectTo: string;
+};
+
+async function upsertRequestAction(
+  formData: FormData,
+  status: "draft" | "form_submitted",
+): Promise<UpsertRequestActionResult> {
   const doctorName = String(formData.get("doctor_name") ?? "").trim();
   if (!doctorName) {
     throw new Error("Please enter the doctor's full name.");
@@ -338,7 +345,7 @@ async function upsertRequestAction(formData: FormData, status: "draft" | "form_s
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/login");
+    return { redirectTo: "/login" };
   }
 
   const { data: profile } = await supabase
@@ -348,7 +355,7 @@ async function upsertRequestAction(formData: FormData, status: "draft" | "form_s
     .single<{ company_id: string | null; role: string }>();
 
   if (!profile?.company_id || profile.role === "supervisor") {
-    return;
+    return { redirectTo: "/dashboard" };
   }
 
   const data = buildRequestFormData(formData);
@@ -436,10 +443,12 @@ async function upsertRequestAction(formData: FormData, status: "draft" | "form_s
   }
 
   if (status === "draft") {
-    redirect(savedRequestId ? `/requests/${savedRequestId}` : "/dashboard");
+    return {
+      redirectTo: savedRequestId ? `/requests/${savedRequestId}` : "/dashboard",
+    };
   }
 
-  redirect("/dashboard");
+  return { redirectTo: "/dashboard" };
 }
 
 export async function saveRequestDraftAction(formData: FormData) {
