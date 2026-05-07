@@ -11,6 +11,7 @@ import {
 } from "@/lib/additional-reference-photos";
 import { REQUEST_STATUSES } from "@/lib/constants";
 import { sendPushNotifications } from "@/lib/push-notifications";
+import { parseSupportingPhotos } from "@/lib/supporting-photos";
 import {
   buildStoryboardRevisionSummary,
   StoryboardRevisionSelection,
@@ -262,6 +263,17 @@ function buildRequestFormData(formData: FormData) {
   }
   data.additional_reference_photos = additionalReferencePhotos;
 
+  const rawSupportingPhotos = String(formData.get("supporting_photos_json") ?? "").trim();
+  let supportingPhotos = parseSupportingPhotos(undefined);
+  if (rawSupportingPhotos) {
+    try {
+      supportingPhotos = parseSupportingPhotos(JSON.parse(rawSupportingPhotos));
+    } catch (error) {
+      console.error("Invalid supporting_photos_json", error);
+    }
+  }
+  data.supporting_photos = supportingPhotos;
+
   return data;
 }
 
@@ -312,7 +324,7 @@ function validateFinalRequestSubmission(formData: FormData, data: JsonRecord) {
     return `You can add at most ${MAX_ADDITIONAL_REFERENCE_PHOTOS} optional reference photos (5 total including younger and current).`;
   }
   for (let i = 0; i < extras.length; i += 1) {
-    const row = extras[i];
+    const row = extras[i] as { path?: unknown; age?: unknown };
     if (!row || typeof row !== "object") {
       return "Optional reference photos must include an age and image for each entry.";
     }

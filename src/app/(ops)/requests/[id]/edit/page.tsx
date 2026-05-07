@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { NewRequestForm } from "@/components/new-request-form";
 import { parseAdditionalReferencePhotos } from "@/lib/additional-reference-photos";
+import { parseSupportingPhotos } from "@/lib/supporting-photos";
 import { createClient } from "@/lib/supabase/server";
 import { RequestRow } from "@/lib/types";
 
@@ -55,6 +56,7 @@ export default async function EditDraftRequestPage({
         initialAdditionalReferencePhotos={parseAdditionalReferencePhotos(
           request.form_data.additional_reference_photos,
         )}
+        initialSupportingPhotos={parseSupportingPhotos(request.form_data.supporting_photos)}
       />
     </div>
   );

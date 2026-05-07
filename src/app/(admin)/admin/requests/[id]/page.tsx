@@ -5,6 +5,7 @@ import { ArrowLeftIcon, FilmIcon, VideoIcon } from "lucide-react";
 import { AdminUploadForms } from "@/components/admin-upload-forms";
 import { CommentThread } from "@/components/comment-thread";
 import { JsonCopyPanel } from "@/components/json-copy-panel";
+import { PhotoLightbox } from "@/components/photo-lightbox";
 import { PdfViewer } from "@/components/pdf-viewer";
 import { RequestRealtimeRefresh } from "@/components/request-realtime-refresh";
 import { StoryboardSlideGallery } from "@/components/storyboard-slide-gallery";
@@ -21,6 +22,11 @@ import { updateRequestStatusAction } from "@/lib/actions";
 import { STATUS_OPTIONS } from "@/lib/constants";
 import { StoryboardSlideWithUrl } from "@/lib/storyboard";
 import { parseAssetPathStrings } from "@/lib/additional-reference-photos";
+import {
+  getSupportingPhotoConfig,
+  groupSupportingPhotosByField,
+  parseSupportingPhotos,
+} from "@/lib/supporting-photos";
 import { createClient } from "@/lib/supabase/server";
 import { SubmitButton } from "@/components/submit-button";
 import {
@@ -140,6 +146,9 @@ export default async function AdminRequestDetailPage({
       enrichedFormData.journey_audio_url = signedJourneyAudioUrl;
     }
   }
+  const supportingPhotoGroups = groupSupportingPhotosByField(
+    parseSupportingPhotos(request.form_data.supporting_photos),
+  );
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-8 lg:px-8">
@@ -283,6 +292,36 @@ export default async function AdminRequestDetailPage({
             <AdminUploadForms requestId={request.id} />
 
             <JsonCopyPanel data={enrichedFormData} />
+
+            {supportingPhotoGroups.size > 0 ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Supporting Photos</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-5">
+                  {Array.from(supportingPhotoGroups.entries()).map(([fieldKey, photos]) => {
+                    const sectionLabel =
+                      getSupportingPhotoConfig(fieldKey)?.label ??
+                      fieldKey.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+                    const lightboxItems = photos
+                      .map((photo, index) => {
+                        const url = signedAssetUrlMap.get(photo.path);
+                        return url ? { url, label: `${sectionLabel} ${index + 1}` } : null;
+                      })
+                      .filter((item): item is { url: string; label: string } => item !== null);
+                    if (lightboxItems.length === 0) {
+                      return null;
+                    }
+                    return (
+                      <div key={fieldKey} className="grid gap-3">
+                        <p className="text-sm font-medium">{sectionLabel}</p>
+                        <PhotoLightbox photos={lightboxItems} />
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            ) : null}
 
             <Card>
               <CardHeader>

@@ -10,8 +10,13 @@ import {
   MAX_ADDITIONAL_REFERENCE_PHOTOS,
   MAX_REFERENCE_PHOTOS_TOTAL,
 } from "@/lib/additional-reference-photos";
+import {
+  getSupportingPhotoConfig,
+  MAX_SUPPORTING_PHOTOS_PER_FIELD,
+  SUPPORTING_PHOTO_FIELD_CONFIGS,
+} from "@/lib/supporting-photos";
 import { createClient } from "@/lib/supabase/client";
-import type { AdditionalReferencePhoto } from "@/lib/types";
+import type { AdditionalReferencePhoto, SupportingPhoto } from "@/lib/types";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -95,6 +100,14 @@ type ExtraReferenceSlot = {
   previewUrl: string;
 };
 
+type SupportingPhotoSlot = {
+  id: string;
+  fieldKey: string;
+  path: string;
+  file: File | null;
+  previewUrl: string;
+};
+
 function createExtraReferenceSlots(
   initial: AdditionalReferencePhoto[] | undefined,
 ): ExtraReferenceSlot[] {
@@ -110,6 +123,31 @@ function createExtraReferenceSlots(
   }));
 }
 
+function createSupportingPhotoSlots(
+  initial: SupportingPhoto[] | undefined,
+): Record<string, SupportingPhotoSlot[]> {
+  const slots: Record<string, SupportingPhotoSlot[]> = {};
+
+  if (!initial?.length) {
+    return slots;
+  }
+
+  for (const row of initial) {
+    slots[row.fieldKey] = [
+      ...(slots[row.fieldKey] ?? []),
+      {
+        id: crypto.randomUUID(),
+        fieldKey: row.fieldKey,
+        path: row.path,
+        file: null,
+        previewUrl: "",
+      },
+    ];
+  }
+
+  return slots;
+}
+
 interface NewRequestFormProps {
   requestId?: string;
   initialDoctorName?: string;
@@ -118,6 +156,7 @@ interface NewRequestFormProps {
   initialCurrentPhotoPath?: string;
   initialJourneyAudioPath?: string;
   initialAdditionalReferencePhotos?: AdditionalReferencePhoto[];
+  initialSupportingPhotos?: SupportingPhoto[];
 }
 
 export function NewRequestForm({
@@ -128,6 +167,7 @@ export function NewRequestForm({
   initialCurrentPhotoPath = "",
   initialJourneyAudioPath = "",
   initialAdditionalReferencePhotos,
+  initialSupportingPhotos,
 }: NewRequestFormProps) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
@@ -146,6 +186,9 @@ export function NewRequestForm({
   const [extraReferenceSlots, setExtraReferenceSlots] = useState<ExtraReferenceSlot[]>(() =>
     createExtraReferenceSlots(initialAdditionalReferencePhotos),
   );
+  const [supportingPhotoSlots, setSupportingPhotoSlots] = useState<
+    Record<string, SupportingPhotoSlot[]>
+  >(() => createSupportingPhotoSlots(initialSupportingPhotos));
   const [journeyInputMode, setJourneyInputMode] = useState<"text" | "audio">(() => {
     if ((initialFormData?.personal_journey ?? "").trim()) {
       return "text";
@@ -202,6 +245,18 @@ export function NewRequestForm({
       }
     };
   }, [extraReferenceSlots]);
+
+  useEffect(() => {
+    return () => {
+      for (const slots of Object.values(supportingPhotoSlots)) {
+        for (const slot of slots) {
+          if (slot.previewUrl) {
+            URL.revokeObjectURL(slot.previewUrl);
+          }
+        }
+      }
+    };
+  }, [supportingPhotoSlots]);
 
   const updatePreviewUrl = (
     file: File | undefined,
@@ -271,6 +326,63 @@ export function NewRequestForm({
         return { ...slot, file, previewUrl: URL.createObjectURL(file) };
       }),
     );
+  };
+
+  const addSupportingPhotoSlot = (fieldKey: string) => {
+    setSupportingPhotoSlots((current) => {
+      const currentSlots = current[fieldKey] ?? [];
+      if (currentSlots.length >= MAX_SUPPORTING_PHOTOS_PER_FIELD) {
+        return current;
+      }
+      return {
+        ...current,
+        [fieldKey]: [
+          ...currentSlots,
+          {
+            id: crypto.randomUUID(),
+            fieldKey,
+            path: "",
+            file: null,
+            previewUrl: "",
+          },
+        ],
+      };
+    });
+  };
+
+  const removeSupportingPhotoSlot = (fieldKey: string, id: string) => {
+    setSupportingPhotoSlots((current) => {
+      const slot = current[fieldKey]?.find((s) => s.id === id);
+      if (slot?.previewUrl) {
+        URL.revokeObjectURL(slot.previewUrl);
+      }
+      return {
+        ...current,
+        [fieldKey]: (current[fieldKey] ?? []).filter((s) => s.id !== id),
+      };
+    });
+  };
+
+  const handleSupportingPhotoFileChange = (
+    fieldKey: string,
+    id: string,
+    file: File | undefined,
+  ) => {
+    setSupportingPhotoSlots((current) => ({
+      ...current,
+      [fieldKey]: (current[fieldKey] ?? []).map((slot) => {
+        if (slot.id !== id) {
+          return slot;
+        }
+        if (slot.previewUrl) {
+          URL.revokeObjectURL(slot.previewUrl);
+        }
+        if (!file || file.size === 0) {
+          return { ...slot, file: null, previewUrl: "" };
+        }
+        return { ...slot, file, previewUrl: URL.createObjectURL(file) };
+      }),
+    }));
   };
 
   const handleResumeUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -389,6 +501,20 @@ export function NewRequestForm({
       }
     }
 
+    for (const [fieldKey, slots] of Object.entries(supportingPhotoSlots)) {
+      const config = getSupportingPhotoConfig(fieldKey);
+      const slotsWithPhoto = slots.filter((slot) => slot.file || slot.path);
+      if (slotsWithPhoto.length > MAX_SUPPORTING_PHOTOS_PER_FIELD) {
+        setError(
+          `You can add at most ${MAX_SUPPORTING_PHOTOS_PER_FIELD} supporting photos for ${config?.label ?? "one question"}.`,
+        );
+        setIsSubmitting(false);
+        setSubmitIntent(null);
+        return;
+      }
+
+    }
+
     if (intent === "final") {
       if (!doctorType) {
         setError("Please select a doctor type.");
@@ -472,6 +598,22 @@ export function NewRequestForm({
         }
       }
 
+      const resolvedSupportingPhotos: SupportingPhoto[] = [];
+      for (const [fieldKey, slots] of Object.entries(supportingPhotoSlots)) {
+        for (const slot of slots) {
+          if (!slot.file && !slot.path) {
+            continue;
+          }
+          let storagePath = slot.path;
+          if (slot.file) {
+            storagePath = await uploadReferenceAsset(slot.file, `supporting-${fieldKey}`);
+          }
+          if (storagePath) {
+            resolvedSupportingPhotos.push({ fieldKey, path: storagePath });
+          }
+        }
+      }
+
       formData.delete("young_photo");
       formData.delete("current_photo");
       formData.delete("journey_audio");
@@ -487,6 +629,8 @@ export function NewRequestForm({
         JSON.stringify(resolvedAdditionalReferencePhotos),
       );
 
+      formData.set("supporting_photos_json", JSON.stringify(resolvedSupportingPhotos));
+
       formData.set(
         "asset_paths_json",
         JSON.stringify(
@@ -494,6 +638,7 @@ export function NewRequestForm({
             youngPhotoPath,
             currentPhotoPath,
             ...resolvedAdditionalReferencePhotos.map((p) => p.path),
+            ...resolvedSupportingPhotos.map((p) => p.path),
             journeyAudioPath,
           ].filter(Boolean),
         ),
@@ -541,6 +686,102 @@ export function NewRequestForm({
   };
 
   const isEditingDraft = Boolean(requestId);
+
+  const renderSupportingPhotoSection = (fieldKey: string) => {
+    if (!SUPPORTING_PHOTO_FIELD_CONFIGS.some((item) => item.fieldKey === fieldKey)) {
+      return null;
+    }
+
+    const slots = supportingPhotoSlots[fieldKey] ?? [];
+
+    return (
+      <div className="mt-3 rounded-sm bg-muted/20 px-3 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            Optional images for this answer
+            {slots.length > 0 ? ` (${slots.length}/${MAX_SUPPORTING_PHOTOS_PER_FIELD})` : ""}
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 shrink-0 gap-1.5 px-2 text-xs"
+            onClick={() => addSupportingPhotoSlot(fieldKey)}
+            disabled={isSubmitting || slots.length >= MAX_SUPPORTING_PHOTOS_PER_FIELD}
+          >
+            <PlusIcon className="size-3.5" />
+            Add image
+          </Button>
+        </div>
+
+        {slots.length > 0 ? (
+          <ul className="mt-2 space-y-2">
+            {slots.map((slot, index) => (
+              <li key={slot.id} className="rounded-sm border bg-background p-3">
+                <div className="grid gap-3 sm:grid-cols-[72px_minmax(0,1fr)_32px] sm:items-center">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Image {index + 1}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive sm:hidden"
+                      onClick={() => removeSupportingPhotoSlot(fieldKey, slot.id)}
+                      disabled={isSubmitting}
+                      aria-label="Remove supporting image"
+                    >
+                      <Trash2Icon className="size-3.5" />
+                    </Button>
+                  </div>
+                  <div className="grid min-w-0 gap-3 sm:grid-cols-[56px_minmax(0,1fr)] sm:items-center">
+                    <div className="h-14 w-14 overflow-hidden rounded-sm border bg-muted">
+                      {slot.previewUrl ? (
+                        <img
+                          src={slot.previewUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : null}
+                    </div>
+                    <div className="min-w-0">
+                      {slot.path && !slot.file ? (
+                        <p className="mb-1 text-xs text-muted-foreground">
+                          Image saved. Choose a new file only to replace it.
+                        </p>
+                      ) : null}
+                      <Input
+                        id={`supporting_file_${slot.id}`}
+                        type="file"
+                        accept="image/*"
+                        disabled={isSubmitting}
+                        className="h-auto min-h-10 w-full py-2 text-sm"
+                        onChange={(event) =>
+                          handleSupportingPhotoFileChange(fieldKey, slot.id, event.target.files?.[0])
+                        }
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="hidden h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive sm:inline-flex"
+                    onClick={() => removeSupportingPhotoSlot(fieldKey, slot.id)}
+                    disabled={isSubmitting}
+                    aria-label="Remove supporting image"
+                  >
+                    <Trash2Icon className="size-4" />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    );
+  };
 
   return (
     <form
@@ -715,6 +956,7 @@ export function NewRequestForm({
                       </div>
                     </>
                   )}
+                  {renderSupportingPhotoSection(field.key)}
                 </div>
               );
             })}
@@ -792,6 +1034,7 @@ export function NewRequestForm({
               />
             </div>
           )}
+          {renderSupportingPhotoSection("personal_journey")}
         </CardContent>
       </Card>
 

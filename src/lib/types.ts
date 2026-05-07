@@ -23,9 +23,12 @@ export type RequestStatus =
 /** Optional extra reference images beyond younger + current (see MAX_REFERENCE_PHOTOS_TOTAL). */
 export type AdditionalReferencePhoto = { path: string; age: string };
 
+/** Optional supporting images attached inline to a specific intake question. */
+export type SupportingPhoto = { fieldKey: string; path: string };
+
 export type JsonRecord = Record<
   string,
-  string | number | boolean | string[] | AdditionalReferencePhoto[]
+  string | number | boolean | string[] | AdditionalReferencePhoto[] | SupportingPhoto[]
 >;
 
 export interface Profile {

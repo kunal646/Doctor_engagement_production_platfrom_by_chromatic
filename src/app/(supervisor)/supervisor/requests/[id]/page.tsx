@@ -23,6 +23,11 @@ import {
   parseAdditionalReferencePhotos,
   parseAssetPathStrings,
 } from "@/lib/additional-reference-photos";
+import {
+  getSupportingPhotoConfig,
+  groupSupportingPhotosByField,
+  parseSupportingPhotos,
+} from "@/lib/supporting-photos";
 import { StoryboardSlideWithUrl } from "@/lib/storyboard";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -167,7 +172,8 @@ export default async function SupervisorRequestDetailPage({
       key !== "young_photo_path" &&
       key !== "current_photo_path" &&
       key !== "journey_audio_path" &&
-      key !== "additional_reference_photos",
+      key !== "additional_reference_photos" &&
+      key !== "supporting_photos",
   );
 
   const additionalReferencePhotos = parseAdditionalReferencePhotos(
@@ -179,6 +185,9 @@ export default async function SupervisorRequestDetailPage({
       return url ? { url, label: `Reference photo (age ${entry.age})` } : null;
     })
     .filter((item): item is { url: string; label: string } => item !== null);
+  const supportingPhotoGroups = groupSupportingPhotosByField(
+    parseSupportingPhotos(request.form_data.supporting_photos),
+  );
 
   const hasSlideStoryboard = hasSlideMetadata;
   const hasRenderableSlides = latestStoryboardSlides.length > 0;
@@ -335,7 +344,7 @@ export default async function SupervisorRequestDetailPage({
                     <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
                       {getFieldLabel(key)}
                     </span>
-                    <span className="whitespace-pre-wrap break-words">
+                    <span className="whitespace-pre-wrap wrap-break-word">
                       {Array.isArray(value)
                         ? value.join(", ") || "-"
                         : String(value).trim() || "-"}
@@ -360,6 +369,37 @@ export default async function SupervisorRequestDetailPage({
                           ...additionalReferenceLightboxItems,
                         ]}
                       />
+                    </div>
+                  </>
+                ) : null}
+                {supportingPhotoGroups.size > 0 ? (
+                  <>
+                    <Separator />
+                    <div className="grid gap-5">
+                      <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                        Supporting Photos
+                      </span>
+                      {Array.from(supportingPhotoGroups.entries()).map(([fieldKey, photos]) => {
+                        const sectionLabel =
+                          getSupportingPhotoConfig(fieldKey)?.label ?? getFieldLabel(fieldKey);
+                        const lightboxItems = photos
+                          .map((photo, index) => {
+                            const url = signedAssetUrls.get(photo.path);
+                            return url ? { url, label: `${sectionLabel} ${index + 1}` } : null;
+                          })
+                          .filter(
+                            (item): item is { url: string; label: string } => item !== null,
+                          );
+                        if (lightboxItems.length === 0) {
+                          return null;
+                        }
+                        return (
+                          <div key={fieldKey} className="grid gap-3">
+                            <p className="text-sm font-medium">{sectionLabel}</p>
+                            <PhotoLightbox photos={lightboxItems} />
+                          </div>
+                        );
+                      })}
                     </div>
                   </>
                 ) : null}
