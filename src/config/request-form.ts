@@ -166,6 +166,17 @@ export const REQUEST_FORM_FIELDS: RequestFormField[] = [
     resumeAutofill: true,
   },
   {
+    key: "hobbies_interests",
+    label: "Hobbies & interests",
+    type: "textarea",
+    description:
+      "A short note on personal interests outside medicine — helps the script land a more human closing beat.",
+    active: true,
+    resumeAutofill: true,
+    resumeAutofillHint:
+      "Use only explicit hobbies, interests, passions, or activities outside medicine from the resume.",
+  },
+  {
     key: "anything_else",
     label: "Anything else you'd like us to know?",
     type: "textarea",
