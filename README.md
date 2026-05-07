@@ -5,7 +5,7 @@ MVP management platform for:
 - Admin team to manually upload storyboard PDFs and final videos
 - Structured JSON handoff into `storyboard_maker`
 
-## Stack
+## Stack:
 
 - Next.js App Router + TypeScript
 - Supabase Auth + Postgres + Storage
