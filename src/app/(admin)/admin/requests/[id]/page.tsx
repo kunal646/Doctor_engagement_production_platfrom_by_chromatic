@@ -1,16 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeftIcon, FilmIcon, VideoIcon } from "lucide-react";
+import { ArrowLeftIcon, DownloadIcon, FilmIcon, VideoIcon } from "lucide-react";
 
 import { AdminUploadForms } from "@/components/admin-upload-forms";
 import { CommentThread } from "@/components/comment-thread";
 import { JsonCopyPanel } from "@/components/json-copy-panel";
 import { PhotoLightbox } from "@/components/photo-lightbox";
 import { PdfViewer } from "@/components/pdf-viewer";
+import { RequestFormPreview } from "@/components/request-form-preview";
 import { RequestRealtimeRefresh } from "@/components/request-realtime-refresh";
 import { StoryboardSlideGallery } from "@/components/storyboard-slide-gallery";
 import { StatusBadge } from "@/components/status-badge";
 import { VideoPlayer } from "@/components/video-player";
+import { REQUEST_FORM_FIELDS } from "@/config/request-form";
+import { resolveRequestFieldCopy } from "@/config/request-form-doctor-type-copy";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -20,13 +23,12 @@ import {
 } from "@/components/ui/card";
 import { updateRequestStatusAction } from "@/lib/actions";
 import { STATUS_OPTIONS } from "@/lib/constants";
+import { getRequestImageAssets } from "@/lib/request-image-assets";
 import { StoryboardSlideWithUrl } from "@/lib/storyboard";
-import { parseAssetPathStrings } from "@/lib/additional-reference-photos";
 import {
-  getSupportingPhotoConfig,
-  groupSupportingPhotosByField,
-  parseSupportingPhotos,
-} from "@/lib/supporting-photos";
+  parseAdditionalReferencePhotos,
+  parseAssetPathStrings,
+} from "@/lib/additional-reference-photos";
 import { createClient } from "@/lib/supabase/server";
 import { SubmitButton } from "@/components/submit-button";
 import {
@@ -39,6 +41,26 @@ import {
 
 const selectClassName =
   "h-11 w-full rounded-sm border border-input bg-background px-3.5 text-sm outline-none transition-[border-color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/30";
+
+function formatPreviewValue(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string").join(", ");
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  return "";
+}
 
 export default async function AdminRequestDetailPage({
   params,
@@ -124,31 +146,135 @@ export default async function AdminRequestDetailPage({
       ).data?.signedUrl ?? null
     : (video?.video_url ?? null);
 
-  const enrichedFormData: JsonRecord = { ...request.form_data };
+  const enrichedFormData: JsonRecord = {
+    doctor_name: request.doctor_name,
+    ...request.form_data,
+  };
   const assetPaths = parseAssetPathStrings(request.form_data.asset_paths);
   const signedAssetUrlMap = new Map<string, string>();
   if (assetPaths.length > 0) {
-    const signedAssetUrls: string[] = [];
     for (const path of assetPaths) {
       const { data } = await supabase.storage
         .from("request-assets")
         .createSignedUrl(path, 60 * 60 * 24);
       if (data?.signedUrl) {
-        signedAssetUrls.push(data.signedUrl);
         signedAssetUrlMap.set(path, data.signedUrl);
       }
     }
-    enrichedFormData.asset_urls = signedAssetUrls;
   }
-  if (typeof request.form_data.journey_audio_path === "string") {
-    const signedJourneyAudioUrl = signedAssetUrlMap.get(request.form_data.journey_audio_path);
-    if (signedJourneyAudioUrl) {
-      enrichedFormData.journey_audio_url = signedJourneyAudioUrl;
-    }
-  }
-  const supportingPhotoGroups = groupSupportingPhotosByField(
-    parseSupportingPhotos(request.form_data.supporting_photos),
+  const journeyAudioPath =
+    typeof request.form_data.journey_audio_path === "string"
+      ? request.form_data.journey_audio_path
+      : "";
+  const journeyAudioUrl = journeyAudioPath ? signedAssetUrlMap.get(journeyAudioPath) ?? "" : "";
+  const doctorType = formatPreviewValue(request.form_data.doctor_type);
+  const personalJourneyField = REQUEST_FORM_FIELDS.find(
+    (field) => field.key === "personal_journey",
   );
+  const additionalReferencePhotos = parseAdditionalReferencePhotos(
+    request.form_data.additional_reference_photos,
+  );
+  const requestImageAssets = getRequestImageAssets(request.form_data);
+  const referenceImageCount = requestImageAssets.filter(
+    (asset) => asset.group === "reference",
+  ).length;
+  const supportingImageCount = requestImageAssets.filter(
+    (asset) => asset.group === "supporting",
+  ).length;
+  const previewFields = [
+    {
+      key: "doctor_name",
+      label: "Full Name",
+      value: request.doctor_name,
+      section: "Basic Details",
+      required: true,
+      description: "Include the preferred prefix such as Dr. or Prof.",
+    },
+    {
+      key: "doctor_type",
+      label: "Doctor Type",
+      value: doctorType,
+      section: "Basic Details",
+      required: true,
+      description: "Key opinion leader (KOL), key brand leader (KBL), or a general participant.",
+    },
+    ...REQUEST_FORM_FIELDS.filter(
+      (field) => field.active !== false && field.key !== "personal_journey",
+    ).map((field) => {
+      const copy = resolveRequestFieldCopy(field, doctorType);
+      return {
+        key: field.key,
+        label: copy.label,
+        value: formatPreviewValue(request.form_data[field.key]),
+        section: "Professional Details",
+        required: field.required,
+        description: copy.description,
+      };
+    }),
+    {
+      key: "personal_journey",
+      label: personalJourneyField?.label ?? "Tell us about your journey",
+      value: formatPreviewValue(request.form_data.personal_journey),
+      section: "Personal Journey",
+      description: personalJourneyField?.description,
+    },
+    {
+      key: "journey_audio",
+      label: "Journey Audio",
+      value: journeyAudioUrl ? "Audio note attached" : "",
+      section: "Personal Journey",
+    },
+    {
+      key: "young_photo_age",
+      label: "Age in Younger Photo",
+      value: formatPreviewValue(request.form_data.young_photo_age),
+      section: "Reference Photos",
+      required: true,
+    },
+    {
+      key: "current_photo_age",
+      label: "Current Age in Recent Photo",
+      value: formatPreviewValue(request.form_data.current_photo_age),
+      section: "Reference Photos",
+      required: true,
+    },
+    {
+      key: "reference_photo_count",
+      label: "Reference Photos Uploaded",
+      value: referenceImageCount > 0 ? `${referenceImageCount} photo${referenceImageCount === 1 ? "" : "s"}` : "",
+      section: "Reference Photos",
+      required: true,
+    },
+    {
+      key: "additional_reference_photo_ages",
+      label: "Optional Reference Photo Ages",
+      value: additionalReferencePhotos
+        .map((photo, index) => `Photo ${index + 1}: age ${photo.age}`)
+        .join("\n"),
+      section: "Reference Photos",
+    },
+    {
+      key: "supporting_photo_count",
+      label: "Supporting Photos Uploaded",
+      value:
+        supportingImageCount > 0
+          ? `${supportingImageCount} photo${supportingImageCount === 1 ? "" : "s"}`
+          : "",
+      section: "Reference Photos",
+    },
+  ];
+  const requestImageGroups = [
+    {
+      key: "reference",
+      title: "Reference Photos",
+      items: requestImageAssets.filter((asset) => asset.group === "reference"),
+    },
+    {
+      key: "supporting",
+      title: "Supporting Photos",
+      items: requestImageAssets.filter((asset) => asset.group === "supporting"),
+    },
+  ].filter((group) => group.items.length > 0);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-8 lg:px-8">
@@ -291,30 +417,38 @@ export default async function AdminRequestDetailPage({
           <div className="flex flex-col gap-6">
             <AdminUploadForms requestId={request.id} />
 
-            <JsonCopyPanel data={enrichedFormData} />
+            <RequestFormPreview fields={previewFields} />
 
-            {supportingPhotoGroups.size > 0 ? (
+            {requestImageGroups.length > 0 ? (
               <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Supporting Photos</CardTitle>
+                <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle className="text-base">Request Images</CardTitle>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Preview uploaded images or download them together as a ZIP.
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={`/api/admin/requests/${request.id}/images`}>
+                      <DownloadIcon className="mr-2 size-4" />
+                      Download ZIP
+                    </a>
+                  </Button>
                 </CardHeader>
                 <CardContent className="grid gap-5">
-                  {Array.from(supportingPhotoGroups.entries()).map(([fieldKey, photos]) => {
-                    const sectionLabel =
-                      getSupportingPhotoConfig(fieldKey)?.label ??
-                      fieldKey.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-                    const lightboxItems = photos
-                      .map((photo, index) => {
-                        const url = signedAssetUrlMap.get(photo.path);
-                        return url ? { url, label: `${sectionLabel} ${index + 1}` } : null;
+                  {requestImageGroups.map((group) => {
+                    const lightboxItems = group.items
+                      .map((asset) => {
+                        const url = signedAssetUrlMap.get(asset.path);
+                        return url ? { url, label: asset.label } : null;
                       })
                       .filter((item): item is { url: string; label: string } => item !== null);
                     if (lightboxItems.length === 0) {
                       return null;
                     }
                     return (
-                      <div key={fieldKey} className="grid gap-3">
-                        <p className="text-sm font-medium">{sectionLabel}</p>
+                      <div key={group.key} className="grid gap-3">
+                        <p className="text-sm font-medium">{group.title}</p>
                         <PhotoLightbox photos={lightboxItems} />
                       </div>
                     );
@@ -322,6 +456,8 @@ export default async function AdminRequestDetailPage({
                 </CardContent>
               </Card>
             ) : null}
+
+            <JsonCopyPanel data={enrichedFormData} />
 
             <Card>
               <CardHeader>
