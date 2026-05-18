@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
+import { AlertCircleIcon } from "lucide-react";
 
 import { NewRequestForm } from "@/components/new-request-form";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { parseAdditionalReferencePhotos } from "@/lib/additional-reference-photos";
 import { parseSupportingPhotos } from "@/lib/supporting-photos";
 import { createClient } from "@/lib/supabase/server";
@@ -36,6 +38,22 @@ export default async function EditDraftRequestPage({
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 px-4 py-5 md:px-6 md:py-8 lg:px-8">
+      {request.admin_rejection_reason ? (
+        <Alert variant="destructive">
+          <AlertCircleIcon />
+          <AlertTitle>Admin feedback</AlertTitle>
+          <AlertDescription className="space-y-2">
+            <p className="whitespace-pre-wrap text-destructive">
+              {request.admin_rejection_reason}
+            </p>
+            {request.admin_rejected_at ? (
+              <p className="text-xs text-muted-foreground">
+                {new Date(request.admin_rejected_at).toLocaleString()}
+              </p>
+            ) : null}
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           Draft Workflow

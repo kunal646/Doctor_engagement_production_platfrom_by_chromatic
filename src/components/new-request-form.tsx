@@ -114,8 +114,8 @@ function createExtraReferenceSlots(
   if (!initial?.length) {
     return [];
   }
-  return initial.map((row) => ({
-    id: crypto.randomUUID(),
+  return initial.map((row, index) => ({
+    id: `extra-ref-initial-${index}-${row.path}`,
     age: row.age,
     path: row.path,
     file: null,
@@ -127,16 +127,19 @@ function createSupportingPhotoSlots(
   initial: SupportingPhoto[] | undefined,
 ): Record<string, SupportingPhotoSlot[]> {
   const slots: Record<string, SupportingPhotoSlot[]> = {};
+  const indexByField = new Map<string, number>();
 
   if (!initial?.length) {
     return slots;
   }
 
   for (const row of initial) {
+    const idx = indexByField.get(row.fieldKey) ?? 0;
+    indexByField.set(row.fieldKey, idx + 1);
     slots[row.fieldKey] = [
       ...(slots[row.fieldKey] ?? []),
       {
-        id: crypto.randomUUID(),
+        id: `supporting-initial-${row.fieldKey}-${idx}-${row.path}`,
         fieldKey: row.fieldKey,
         path: row.path,
         file: null,
@@ -257,6 +260,102 @@ export function NewRequestForm({
       }
     };
   }, [supportingPhotoSlots]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+
+    async function signRequestAssetPath(path: string): Promise<string | null> {
+      const { data, error } = await supabase.storage
+        .from("request-assets")
+        .createSignedUrl(path, 60 * 60);
+      if (error || !data?.signedUrl) {
+        return null;
+      }
+      return data.signedUrl;
+    }
+
+    void (async () => {
+      if (initialYoungPhotoPath) {
+        const url = await signRequestAssetPath(initialYoungPhotoPath);
+        if (!cancelled && url) {
+          setYoungPhotoPreviewUrl((prev) => (prev.startsWith("blob:") ? prev : url));
+        }
+      }
+      if (initialCurrentPhotoPath) {
+        const url = await signRequestAssetPath(initialCurrentPhotoPath);
+        if (!cancelled && url) {
+          setCurrentPhotoPreviewUrl((prev) => (prev.startsWith("blob:") ? prev : url));
+        }
+      }
+
+      const extraFromServer = createExtraReferenceSlots(initialAdditionalReferencePhotos);
+      if (extraFromServer.some((s) => s.path && !s.previewUrl)) {
+        const signedExtras = await Promise.all(
+          extraFromServer.map(async (slot) => {
+            if (!slot.path || slot.previewUrl) {
+              return slot;
+            }
+            const url = await signRequestAssetPath(slot.path);
+            return url ? { ...slot, previewUrl: url } : slot;
+          }),
+        );
+        if (!cancelled) {
+          setExtraReferenceSlots((prev) =>
+            prev.map((slot) => {
+              if (!slot.path || slot.previewUrl || slot.file) {
+                return slot;
+              }
+              const match = signedExtras.find((s) => s.id === slot.id);
+              return match?.previewUrl ? { ...slot, previewUrl: match.previewUrl } : slot;
+            }),
+          );
+        }
+      }
+
+      const supportingFromServer = createSupportingPhotoSlots(initialSupportingPhotos);
+      const supportingKeys = Object.keys(supportingFromServer);
+      if (supportingKeys.length > 0) {
+        const signedSupporting: Record<string, SupportingPhotoSlot[]> = {};
+        for (const key of supportingKeys) {
+          signedSupporting[key] = await Promise.all(
+            (supportingFromServer[key] ?? []).map(async (slot) => {
+              if (!slot.path || slot.previewUrl) {
+                return slot;
+              }
+              const url = await signRequestAssetPath(slot.path);
+              return url ? { ...slot, previewUrl: url } : slot;
+            }),
+          );
+        }
+        if (!cancelled) {
+          setSupportingPhotoSlots((prev) => {
+            const next = { ...prev };
+            for (const fieldKey of Object.keys(signedSupporting)) {
+              const prevSlots = prev[fieldKey] ?? [];
+              next[fieldKey] = prevSlots.map((slot) => {
+                if (!slot.path || slot.previewUrl || slot.file) {
+                  return slot;
+                }
+                const match = signedSupporting[fieldKey]?.find((s) => s.id === slot.id);
+                return match?.previewUrl ? { ...slot, previewUrl: match.previewUrl } : slot;
+              });
+            }
+            return next;
+          });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    initialYoungPhotoPath,
+    initialCurrentPhotoPath,
+    initialAdditionalReferencePhotos,
+    initialSupportingPhotos,
+  ]);
 
   const updatePreviewUrl = (
     file: File | undefined,

@@ -57,6 +57,11 @@ export interface RequestRow {
   max_storyboard_revisions: number;
   video_downloaded_at?: string | null;
   video_downloaded_by?: string | null;
+  /** Set when an admin sends the request back to draft; cleared on resubmit. */
+  admin_rejection_reason?: string | null;
+  admin_rejected_at?: string | null;
+  /** When ops submitted the intake (status → form_submitted); null while draft. */
+  form_submitted_at?: string | null;
   created_at: string;
   updated_at: string;
 }

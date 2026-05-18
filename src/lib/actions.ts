@@ -399,6 +399,11 @@ async function upsertRequestAction(
         doctor_name: doctorName,
         status,
         form_data: data,
+        form_submitted_at:
+          status === "form_submitted" ? new Date().toISOString() : null,
+        ...(status === "form_submitted"
+          ? { admin_rejection_reason: null, admin_rejected_at: null }
+          : {}),
       })
       .eq("id", requestId);
 
@@ -415,6 +420,8 @@ async function upsertRequestAction(
         created_by: user.id,
         status,
         form_data: data,
+        form_submitted_at:
+          status === "form_submitted" ? new Date().toISOString() : null,
       })
       .select("id")
       .single<{ id: string }>();
@@ -687,10 +694,17 @@ export async function updateRequestStatusAction(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("requests")
-    .update({ status })
-    .eq("id", requestId);
+  const patch: {
+    status: RequestStatus;
+    admin_rejection_reason?: null;
+    admin_rejected_at?: null;
+  } = { status };
+  if (status !== "draft") {
+    patch.admin_rejection_reason = null;
+    patch.admin_rejected_at = null;
+  }
+
+  const { error } = await supabase.from("requests").update(patch).eq("id", requestId);
 
   if (error) {
     console.error(error.message);
@@ -701,6 +715,106 @@ export async function updateRequestStatusAction(formData: FormData) {
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath(`/requests/${requestId}`);
   revalidatePath(`/supervisor/requests/${requestId}`);
+}
+
+const ADMIN_REJECTION_REASON_MAX_LEN = 4000;
+
+export async function adminRejectRequestToDraftAction(formData: FormData) {
+  const requestId = String(formData.get("request_id") ?? "").trim();
+  const reasonRaw = String(formData.get("rejection_reason") ?? "");
+  const reason = reasonRaw.trim();
+
+  if (!requestId || !reason) {
+    return;
+  }
+
+  if (reason.length > ADMIN_REJECTION_REASON_MAX_LEN) {
+    return;
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single<{ role: string }>();
+
+  if (profile?.role !== "admin") {
+    return;
+  }
+
+  const adminClient = createAdminClient();
+  const { data: requestRow } = await adminClient
+    .from("requests")
+    .select("id,status,created_by,doctor_name")
+    .eq("id", requestId)
+    .maybeSingle<{
+      id: string;
+      status: RequestStatus;
+      created_by: string;
+      doctor_name: string;
+    }>();
+
+  if (!requestRow || requestRow.status === "draft") {
+    return;
+  }
+
+  const rejectedAt = new Date().toISOString();
+  const { error } = await adminClient
+    .from("requests")
+    .update({
+      status: "draft",
+      form_submitted_at: null,
+      admin_rejection_reason: reason,
+      admin_rejected_at: rejectedAt,
+    })
+    .eq("id", requestId)
+    .neq("status", "draft");
+
+  if (error) {
+    console.error(error.message);
+    return;
+  }
+
+  await adminClient
+    .from("doctor_review_sessions")
+    .update({ status: "revoked" })
+    .eq("request_id", requestId)
+    .eq("status", "active");
+
+  await adminClient
+    .from("doctor_storyboard_review_sessions")
+    .update({ status: "revoked" })
+    .eq("request_id", requestId)
+    .eq("status", "active");
+
+  revalidatePath("/dashboard");
+  revalidatePath("/admin/dashboard");
+  revalidatePath(`/admin/requests/${requestId}`);
+  revalidatePath(`/requests/${requestId}`);
+  revalidatePath(`/requests/${requestId}/edit`);
+  revalidatePath(`/supervisor/requests/${requestId}`);
+
+  const summary =
+    reason.length > 140 ? `${reason.slice(0, 137).trimEnd()}…` : reason;
+  await sendPushNotifications(
+    { userIds: [requestRow.created_by] },
+    {
+      title: "Request returned to draft",
+      body: `Admin feedback: ${summary || "Please review and resubmit."}`,
+      urlsByRole: {
+        ops: `/requests/${requestId}`,
+      },
+      tag: `request-rejected-draft-${requestId}`,
+    },
+  );
 }
 
 export async function uploadStoryboardAction(formData: FormData) {

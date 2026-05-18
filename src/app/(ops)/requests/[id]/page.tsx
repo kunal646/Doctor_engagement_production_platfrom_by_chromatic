@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeftIcon, FilmIcon, PencilIcon, VideoIcon } from "lucide-react";
+import { ArrowLeftIcon, FilmIcon, PencilIcon, VideoIcon, AlertCircleIcon } from "lucide-react";
 
 import { REQUEST_FORM_FIELDS } from "@/config/request-form";
 import { CommentThread } from "@/components/comment-thread";
@@ -23,6 +23,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { countDoctorReviewChanges, isDoctorReviewExpired } from "@/lib/doctor-review";
 import {
   countDoctorStoryboardReviewFeedback,
@@ -37,6 +38,7 @@ import {
   parseSupportingPhotos,
 } from "@/lib/supporting-photos";
 import { StoryboardSlideWithUrl } from "@/lib/storyboard";
+import { requestSubmittedDetailRow } from "@/lib/request-submitted-at";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -215,6 +217,7 @@ export default async function OpsRequestDetailPage({
   const isInReview = request.status === "storyboard_review";
   const isSlideReview = isInReview && hasSlideStoryboard && hasRenderableSlides;
   const isDraft = request.status === "draft";
+  const intakeRow = requestSubmittedDetailRow(request);
 
   return (
     <ReviewProvider>
@@ -269,6 +272,25 @@ export default async function OpsRequestDetailPage({
         <div className="mx-auto w-full max-w-6xl px-4 py-5 md:px-6 md:py-8 lg:px-8">
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.75fr)_minmax(320px,1fr)] xl:items-start">
             <div className="flex flex-col gap-6">
+              {isDraft && request.admin_rejection_reason ? (
+                <Alert variant="destructive">
+                  <AlertCircleIcon />
+                  <AlertTitle>Your request was returned for corrections</AlertTitle>
+                  <AlertDescription className="space-y-2">
+                    <p className="whitespace-pre-wrap text-destructive">
+                      {request.admin_rejection_reason}
+                    </p>
+                    {request.admin_rejected_at ? (
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(request.admin_rejected_at).toLocaleString()}
+                      </p>
+                    ) : null}
+                    <p className="text-sm text-muted-foreground">
+                      Update the brief below, then submit again when ready.
+                    </p>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
               {videoUrl && (
                 <Card>
                   <CardHeader>
@@ -409,9 +431,9 @@ export default async function OpsRequestDetailPage({
                 <CardContent className="grid gap-4 text-sm">
                   <div className="grid gap-1">
                     <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                      Submitted
+                      {intakeRow.label}
                     </span>
-                    <span>{new Date(request.created_at).toLocaleString()}</span>
+                    <span>{intakeRow.value}</span>
                   </div>
                   <div className="grid gap-1">
                     <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">

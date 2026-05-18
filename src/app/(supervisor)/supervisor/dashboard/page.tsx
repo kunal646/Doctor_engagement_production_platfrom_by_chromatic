@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/table";
 import { getCurrentUserAndProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getRequestFormSubmittedAtIso } from "@/lib/request-submitted-at";
 import { Profile, RequestRow } from "@/lib/types";
 
 const selectClassName =
@@ -59,6 +60,7 @@ async function SupervisorRequestsTable({
     .select("*")
     .eq("company_id", companyId)
     .neq("status", "draft")
+    .order("form_submitted_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false });
 
   if (query) {
@@ -136,7 +138,7 @@ async function SupervisorRequestsTable({
                     : "-"}
                 </TableCell>
                 <TableCell className="hidden text-muted-foreground md:table-cell">
-                  {new Date(request.created_at).toLocaleDateString()}
+                  {new Date(getRequestFormSubmittedAtIso(request)).toLocaleDateString()}
                 </TableCell>
                 <TableCell className="pr-4 text-right md:pr-6">
                   <Button variant="ghost" size="sm" asChild>

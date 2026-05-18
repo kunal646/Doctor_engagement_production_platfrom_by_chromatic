@@ -18,12 +18,20 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { updateRequestStatusAction } from "@/lib/actions";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  adminRejectRequestToDraftAction,
+  updateRequestStatusAction,
+} from "@/lib/actions";
 import { STATUS_OPTIONS } from "@/lib/constants";
 import { getRequestImageAssets } from "@/lib/request-image-assets";
+import { intakeSubmittedDisplayValue } from "@/lib/request-submitted-at";
+import { profileDisplayName } from "@/lib/profile-display";
 import { StoryboardSlideWithUrl } from "@/lib/storyboard";
 import {
   parseAdditionalReferencePhotos,
@@ -72,15 +80,18 @@ export default async function AdminRequestDetailPage({
 
   const { data: request } = await supabase
     .from("requests")
-    .select("*, companies(name)")
+    .select(
+      "*, companies(name), submitted_by:profiles!requests_created_by_fkey(full_name,email)",
+    )
     .eq("id", id)
-    .single<RequestRow & { companies: { name: string } | null }>();
+    .single<
+      RequestRow & {
+        companies: { name: string } | null;
+        submitted_by: { full_name: string | null; email: string | null } | null;
+      }
+    >();
 
   if (!request) {
-    notFound();
-  }
-
-  if (request.status === "draft") {
     notFound();
   }
 
@@ -276,6 +287,8 @@ export default async function AdminRequestDetailPage({
     },
   ].filter((group) => group.items.length > 0);
 
+  const isDraft = request.status === "draft";
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-8 lg:px-8">
       <RequestRealtimeRefresh requestId={request.id} />
@@ -300,28 +313,83 @@ export default async function AdminRequestDetailPage({
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-            <p className="text-sm text-muted-foreground">
-              {request.companies?.name ?? "Unknown Company"}
-            </p>
-            <form
-              action={updateRequestStatusAction}
-              className="grid gap-3 sm:grid-cols-[220px_auto] sm:items-center"
-            >
-              <input type="hidden" name="request_id" value={request.id} />
-              <select
-                name="status"
-                defaultValue={request.status}
-                className={selectClassName}
-              >
-                {STATUS_OPTIONS.filter((item) => item.value !== "draft").map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-              <SubmitButton type="submit">Update Status</SubmitButton>
-            </form>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                {request.companies?.name ?? "Unknown Company"}
+              </p>
+              {isDraft ? (
+                <p className="max-w-xl text-sm text-muted-foreground">
+                  This request is in <span className="font-medium text-foreground">Draft</span>.
+                  Ops can edit and resubmit from their dashboard. Pipeline uploads stay disabled
+                  until it moves past draft again.
+                </p>
+              ) : (
+                <form
+                  action={updateRequestStatusAction}
+                  className="grid gap-3 sm:grid-cols-[220px_auto] sm:items-center"
+                >
+                  <input type="hidden" name="request_id" value={request.id} />
+                  <select
+                    name="status"
+                    defaultValue={request.status}
+                    className={selectClassName}
+                  >
+                    {STATUS_OPTIONS.filter((item) => item.value !== "draft").map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                  <SubmitButton type="submit">Update Status</SubmitButton>
+                </form>
+              )}
+            </div>
+
+            {isDraft && request.admin_rejection_reason ? (
+              <div className="rounded-lg border border-dashed bg-muted/30 px-4 py-3 text-sm">
+                <p className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                  Feedback sent to ops
+                </p>
+                <p className="mt-2 whitespace-pre-wrap">{request.admin_rejection_reason}</p>
+                {request.admin_rejected_at ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {new Date(request.admin_rejected_at).toLocaleString()}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {!isDraft ? (
+              <Card className="border-destructive/30">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Return brief to ops (draft)</CardTitle>
+                  <CardDescription>
+                    Use this when the intake form needs corrections. Ops will see your note, can
+                    edit the request, and submit again.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <form action={adminRejectRequestToDraftAction} className="grid gap-3">
+                    <input type="hidden" name="request_id" value={request.id} />
+                    <div className="grid gap-2">
+                      <Label htmlFor="rejection_reason">Reason for ops</Label>
+                      <Textarea
+                        id="rejection_reason"
+                        name="rejection_reason"
+                        required
+                        placeholder="e.g. Please clarify specialty and upload a higher-resolution current photo."
+                        className="min-h-[100px] resize-y"
+                        maxLength={4000}
+                      />
+                    </div>
+                    <SubmitButton type="submit" variant="destructive">
+                      Send back to draft
+                    </SubmitButton>
+                  </form>
+                </CardContent>
+              </Card>
+            ) : null}
           </div>
         </div>
 
@@ -415,7 +483,7 @@ export default async function AdminRequestDetailPage({
           </div>
 
           <div className="flex flex-col gap-6">
-            <AdminUploadForms requestId={request.id} />
+            {!isDraft ? <AdminUploadForms requestId={request.id} /> : null}
 
             <RequestFormPreview fields={previewFields} />
 
@@ -469,6 +537,18 @@ export default async function AdminRequestDetailPage({
                     Created
                   </span>
                   <span>{new Date(request.created_at).toLocaleString()}</span>
+                </div>
+                <div className="grid gap-1">
+                  <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                    Intake submitted
+                  </span>
+                  <span>{intakeSubmittedDisplayValue(request)}</span>
+                </div>
+                <div className="grid gap-1">
+                  <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                    Submitted by
+                  </span>
+                  <span>{profileDisplayName(request.submitted_by)}</span>
                 </div>
                 <div className="grid gap-1">
                   <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">

@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/table";
 import { getCurrentUserAndProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { requestSubmittedListMeta } from "@/lib/request-submitted-at";
 import { RequestRow } from "@/lib/types";
 
 const STATUS_OPTIONS = [
@@ -64,6 +65,7 @@ async function OpsRequestsTable({
     .from("requests")
     .select("*")
     .eq("company_id", companyId)
+    .order("form_submitted_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false });
 
   if (query) {
@@ -88,7 +90,10 @@ async function OpsRequestsTable({
               <div className="min-w-0">
                 <p className="truncate text-base font-semibold">{request.doctor_name}</p>
                 <p className="mt-1 text-xs uppercase tracking-[0.1em] text-muted-foreground">
-                  Submitted {new Date(request.created_at).toLocaleDateString()}
+                  {(() => {
+                    const meta = requestSubmittedListMeta(request);
+                    return `${meta.label} ${meta.dateLabel}`;
+                  })()}
                 </p>
               </div>
               <ChevronRightIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -117,7 +122,7 @@ async function OpsRequestsTable({
               <TableHead className="pl-4 md:pl-6">Doctor Name</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="hidden lg:table-cell">Downloaded</TableHead>
-              <TableHead className="hidden md:table-cell">Submitted</TableHead>
+              <TableHead className="hidden md:table-cell">Created / submitted</TableHead>
               <TableHead className="pr-4 text-right md:pr-6">Action</TableHead>
             </TableRow>
           </TableHeader>
@@ -134,7 +139,10 @@ async function OpsRequestsTable({
                     : "-"}
                 </TableCell>
                 <TableCell className="hidden text-muted-foreground md:table-cell">
-                  {new Date(request.created_at).toLocaleDateString()}
+                  {(() => {
+                    const meta = requestSubmittedListMeta(request);
+                    return `${meta.label} ${meta.dateLabel}`;
+                  })()}
                 </TableCell>
                 <TableCell className="pr-4 text-right md:pr-6">
                   <Button variant="ghost" size="sm" asChild>

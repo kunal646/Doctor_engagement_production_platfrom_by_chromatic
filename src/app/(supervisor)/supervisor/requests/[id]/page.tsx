@@ -29,6 +29,7 @@ import {
   parseSupportingPhotos,
 } from "@/lib/supporting-photos";
 import { StoryboardSlideWithUrl } from "@/lib/storyboard";
+import { requestSubmittedDetailRow } from "@/lib/request-submitted-at";
 import { createClient } from "@/lib/supabase/server";
 import {
   Profile,
@@ -192,6 +193,7 @@ export default async function SupervisorRequestDetailPage({
   const hasSlideStoryboard = hasSlideMetadata;
   const hasRenderableSlides = latestStoryboardSlides.length > 0;
   const operatorName = createdByProfile?.full_name || createdByProfile?.email || "Unknown";
+  const intakeRow = requestSubmittedDetailRow(request);
 
   return (
     <div className="flex flex-col">
@@ -324,9 +326,9 @@ export default async function SupervisorRequestDetailPage({
                 </div>
                 <div className="grid gap-1">
                   <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                    Submitted
+                    {intakeRow.label}
                   </span>
-                  <span>{new Date(request.created_at).toLocaleString()}</span>
+                  <span>{intakeRow.value}</span>
                 </div>
                 <div className="grid gap-1">
                   <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">

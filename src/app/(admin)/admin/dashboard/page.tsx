@@ -29,10 +29,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/server";
+import { profileDisplayName } from "@/lib/profile-display";
+import { requestSubmittedListMeta } from "@/lib/request-submitted-at";
 import { RequestRow } from "@/lib/types";
 
 const selectClassName =
   "h-11 w-full rounded-sm border border-input bg-background px-3.5 text-sm outline-none transition-[border-color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/30";
+
+type AdminRequestWithRelations = RequestRow & {
+  companies: { name: string } | null;
+  submitted_by: { full_name: string | null; email: string | null } | null;
+};
 
 async function AdminRequestsTable({
   status,
@@ -45,8 +52,11 @@ async function AdminRequestsTable({
 
   let requestQuery = supabase
     .from("requests")
-    .select("*, companies(name)")
+    .select(
+      "*, companies(name), submitted_by:profiles!requests_created_by_fkey(full_name,email)",
+    )
     .neq("status", "draft")
+    .order("form_submitted_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false });
 
   if (status && status !== "all") {
@@ -56,9 +66,7 @@ async function AdminRequestsTable({
     requestQuery = requestQuery.eq("company_id", companyFilter);
   }
 
-  const { data: requests } = await requestQuery.returns<
-    (RequestRow & { companies: { name: string } | null })[]
-  >();
+  const { data: requests } = await requestQuery.returns<AdminRequestWithRelations[]>();
 
   return (
     <CardContent className="px-0 pt-4">
@@ -74,6 +82,9 @@ async function AdminRequestsTable({
                 <p className="truncate text-base font-semibold">{request.doctor_name}</p>
                 <p className="mt-1 text-xs uppercase tracking-[0.1em] text-muted-foreground">
                   {request.companies?.name ?? "Unknown Company"}
+                </p>
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  Submitted by {profileDisplayName(request.submitted_by)}
                 </p>
               </div>
               <ChevronRightIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -101,6 +112,7 @@ async function AdminRequestsTable({
             <TableRow>
               <TableHead className="pl-4 md:pl-6">Doctor</TableHead>
               <TableHead>Company</TableHead>
+              <TableHead className="hidden lg:table-cell">Submitted by</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="hidden lg:table-cell">Downloaded</TableHead>
               <TableHead className="hidden md:table-cell">Submitted</TableHead>
@@ -114,6 +126,9 @@ async function AdminRequestsTable({
                 <TableCell className="text-muted-foreground">
                   {request.companies?.name ?? "-"}
                 </TableCell>
+                <TableCell className="hidden text-muted-foreground lg:table-cell">
+                  {profileDisplayName(request.submitted_by)}
+                </TableCell>
                 <TableCell>
                   <StatusBadge status={request.status} />
                 </TableCell>
@@ -123,7 +138,7 @@ async function AdminRequestsTable({
                     : "-"}
                 </TableCell>
                 <TableCell className="hidden text-muted-foreground md:table-cell">
-                  {new Date(request.created_at).toLocaleDateString()}
+                  {requestSubmittedListMeta(request).dateLabel}
                 </TableCell>
                 <TableCell className="pr-4 text-right md:pr-6">
                   <Button variant="ghost" size="sm" asChild>
@@ -134,7 +149,7 @@ async function AdminRequestsTable({
             ))}
             {(!requests || requests.length === 0) && (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                   No requests found.
                 </TableCell>
               </TableRow>
