@@ -14,6 +14,7 @@ import {
 import { StatusBadge } from "@/components/status-badge";
 import { DashboardFilterForm } from "@/components/dashboard-filter-form";
 import { RealtimeRefresh } from "@/components/realtime-refresh";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -32,11 +33,16 @@ import {
 } from "@/components/ui/table";
 import { getCurrentUserAndProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import {
+  isReturnedForEditsRequest,
+  sortOpsDashboardRequests,
+} from "@/lib/request-returned-draft";
 import { requestSubmittedListMeta } from "@/lib/request-submitted-at";
 import { RequestRow } from "@/lib/types";
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All Statuses" },
+  { value: "returned_draft", label: "Returned for edits" },
   { value: "draft", label: "Draft" },
   { value: "form_submitted", label: "Form Submitted" },
   { value: "storyboard_in_progress", label: "Storyboard In Progress" },
@@ -71,11 +77,19 @@ async function OpsRequestsTable({
   if (query) {
     requestQuery = requestQuery.ilike("doctor_name", `%${query}%`);
   }
-  if (status && status !== "all") {
+  if (status === "returned_draft") {
+    requestQuery = requestQuery
+      .eq("status", "draft")
+      .not("admin_rejection_reason", "is", null);
+  } else if (status && status !== "all") {
     requestQuery = requestQuery.eq("status", status);
   }
 
-  const { data: requests } = await requestQuery.returns<RequestRow[]>();
+  const { data: rawRequests } = await requestQuery.returns<RequestRow[]>();
+  const requests =
+    status === "returned_draft"
+      ? (rawRequests ?? []).filter((r) => isReturnedForEditsRequest(r))
+      : sortOpsDashboardRequests(rawRequests ?? []);
 
   return (
     <CardContent className="px-0 pt-4">
@@ -89,17 +103,38 @@ async function OpsRequestsTable({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-base font-semibold">{request.doctor_name}</p>
-                <p className="mt-1 text-xs uppercase tracking-[0.1em] text-muted-foreground">
-                  {(() => {
-                    const meta = requestSubmittedListMeta(request);
-                    return `${meta.label} ${meta.dateLabel}`;
-                  })()}
-                </p>
+                {isReturnedForEditsRequest(request) ? (
+                  <>
+                    <p className="mt-1 text-xs font-medium text-destructive">
+                      Admin asked for changes — open to review
+                    </p>
+                    {request.admin_rejected_at ? (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Returned {new Date(request.admin_rejected_at).toLocaleString()}
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="mt-1 text-xs uppercase tracking-[0.1em] text-muted-foreground">
+                    {(() => {
+                      const meta = requestSubmittedListMeta(request);
+                      return `${meta.label} ${meta.dateLabel}`;
+                    })()}
+                  </p>
+                )}
               </div>
               <ChevronRightIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <StatusBadge status={request.status} />
+              {isReturnedForEditsRequest(request) ? (
+                <Badge
+                  variant="outline"
+                  className="border-destructive/40 bg-destructive/10 text-[11px] font-medium uppercase tracking-[0.06em] text-destructive"
+                >
+                  Needs updates
+                </Badge>
+              ) : null}
               <span className="text-xs text-muted-foreground">
                 {request.video_downloaded_at
                   ? `Downloaded ${new Date(request.video_downloaded_at).toLocaleDateString()}`
@@ -131,18 +166,41 @@ async function OpsRequestsTable({
               <TableRow key={request.id}>
                 <TableCell className="pl-4 font-medium md:pl-6">{request.doctor_name}</TableCell>
                 <TableCell>
-                  <StatusBadge status={request.status} />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge status={request.status} />
+                    {isReturnedForEditsRequest(request) ? (
+                      <Badge
+                        variant="outline"
+                        className="border-destructive/40 bg-destructive/10 text-[11px] font-medium uppercase tracking-[0.06em] text-destructive"
+                      >
+                        Needs updates
+                      </Badge>
+                    ) : null}
+                  </div>
                 </TableCell>
                 <TableCell className="hidden text-muted-foreground lg:table-cell">
                   {request.video_downloaded_at
                     ? new Date(request.video_downloaded_at).toLocaleDateString()
                     : "-"}
                 </TableCell>
-                <TableCell className="hidden text-muted-foreground md:table-cell">
-                  {(() => {
-                    const meta = requestSubmittedListMeta(request);
-                    return `${meta.label} ${meta.dateLabel}`;
-                  })()}
+                <TableCell className="hidden max-w-[220px] text-muted-foreground md:table-cell">
+                  {isReturnedForEditsRequest(request) ? (
+                    <span className="block text-xs leading-snug">
+                      <span className="font-medium text-destructive">
+                        Admin asked for changes — open to review
+                      </span>
+                      {request.admin_rejected_at ? (
+                        <span className="mt-1 block text-muted-foreground">
+                          Returned {new Date(request.admin_rejected_at).toLocaleString()}
+                        </span>
+                      ) : null}
+                    </span>
+                  ) : (
+                    (() => {
+                      const meta = requestSubmittedListMeta(request);
+                      return `${meta.label} ${meta.dateLabel}`;
+                    })()
+                  )}
                 </TableCell>
                 <TableCell className="pr-4 text-right md:pr-6">
                   <Button variant="ghost" size="sm" asChild>
@@ -178,9 +236,9 @@ export default async function OpsDashboardPage({
 
   const { data: summaryRequests } = await supabase
     .from("requests")
-    .select("status,video_downloaded_at")
+    .select("status,video_downloaded_at,admin_rejection_reason")
     .eq("company_id", profile.company_id!)
-    .returns<Pick<RequestRow, "status" | "video_downloaded_at">[]>();
+    .returns<Pick<RequestRow, "status" | "video_downloaded_at" | "admin_rejection_reason">[]>();
 
   const totalRequests = summaryRequests?.length ?? 0;
   const deliveredCount =
@@ -191,6 +249,9 @@ export default async function OpsDashboardPage({
     summaryRequests?.filter(
       (r) => r.status === "storyboard_review" || r.status === "changes_requested",
     ).length ?? 0;
+  const returnedForEditsCount =
+    summaryRequests?.filter((r) => isReturnedForEditsRequest(r)).length ?? 0;
+  const needsAttentionCount = inReviewCount + returnedForEditsCount;
   const draftCount =
     summaryRequests?.filter((r) => r.status === "draft").length ?? 0;
 
@@ -236,8 +297,11 @@ export default async function OpsDashboardPage({
               <TriangleAlertIcon className="size-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-semibold">{inReviewCount}</div>
-              <p className="text-xs text-muted-foreground">In review or changes requested</p>
+              <div className="text-2xl font-semibold">{needsAttentionCount}</div>
+              <p className="text-xs text-muted-foreground">
+                Storyboard review, changes requested, and intakes returned by admin for edits
+                {returnedForEditsCount > 0 ? ` (${returnedForEditsCount} returned)` : ""}.
+              </p>
             </CardContent>
           </Card>
 
