@@ -148,3 +148,18 @@ export function requestUrlForRole(role: UserRole, requestId: string) {
   }
   return `/requests/${requestId}`;
 }
+
+export async function notifyAdminsForRequest(
+  requestId: string,
+  payload: Pick<PushPayload, "title" | "body" | "tag">,
+) {
+  await sendPushNotifications(
+    { roles: ["admin"] },
+    {
+      ...payload,
+      urlsByRole: {
+        admin: requestUrlForRole("admin", requestId),
+      },
+    },
+  );
+}

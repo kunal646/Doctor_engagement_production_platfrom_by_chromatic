@@ -10,7 +10,7 @@ import {
   normalizeAdditionalReferencePhotosInput,
 } from "@/lib/additional-reference-photos";
 import { REQUEST_STATUSES } from "@/lib/constants";
-import { sendPushNotifications } from "@/lib/push-notifications";
+import { notifyAdminsForRequest, sendPushNotifications } from "@/lib/push-notifications";
 import { parseSupportingPhotos } from "@/lib/supporting-photos";
 import {
   buildStoryboardRevisionSummary,
@@ -381,17 +381,25 @@ async function upsertRequestAction(
   const adminClient = createAdminClient();
   const requestId = String(formData.get("request_id") ?? "").trim();
   let savedRequestId = requestId;
+  let isResubmit = false;
 
   if (requestId) {
     const { data: existingRequest } = await adminClient
       .from("requests")
-      .select("id,created_by,status")
+      .select("id,created_by,status,admin_rejected_at")
       .eq("id", requestId)
-      .maybeSingle<{ id: string; created_by: string; status: RequestStatus }>();
+      .maybeSingle<{
+        id: string;
+        created_by: string;
+        status: RequestStatus;
+        admin_rejected_at: string | null;
+      }>();
 
     if (!existingRequest || existingRequest.created_by !== user.id || existingRequest.status !== "draft") {
       throw new Error("Only your own drafts can be updated.");
     }
+
+    isResubmit = Boolean(existingRequest.admin_rejected_at);
 
     const { error } = await adminClient
       .from("requests")
@@ -448,17 +456,13 @@ async function upsertRequestAction(
   }
 
   if (status === "form_submitted" && savedRequestId) {
-    await sendPushNotifications(
-      { roles: ["admin"] },
-      {
-        title: "New Request Submitted",
-        body: `${doctorName} is ready for production intake. Review the submitted brief now.`,
-        urlsByRole: {
-          admin: `/admin/requests/${savedRequestId}`,
-        },
-        tag: `request-submitted-${savedRequestId}`,
-      },
-    );
+    await notifyAdminsForRequest(savedRequestId, {
+      title: isResubmit ? "Brief Resubmitted" : "New Request Submitted",
+      body: isResubmit
+        ? `${doctorName} updated the brief after your feedback. Review and continue intake.`
+        : `${doctorName} is ready for production intake. Review the submitted brief now.`,
+      tag: `request-submitted-${savedRequestId}`,
+    });
   }
 
   if (status === "draft") {
@@ -561,10 +565,11 @@ export async function requestStoryboardRevisionAction(formData: FormData) {
 
   const { data: request } = await supabase
     .from("requests")
-    .select("status,storyboard_revision_count,max_storyboard_revisions")
+    .select("status,doctor_name,storyboard_revision_count,max_storyboard_revisions")
     .eq("id", requestId)
     .maybeSingle<{
       status: RequestStatus;
+      doctor_name: string;
       storyboard_revision_count: number;
       max_storyboard_revisions: number;
     }>();
@@ -641,6 +646,12 @@ export async function requestStoryboardRevisionAction(formData: FormData) {
     return;
   }
 
+  await notifyAdminsForRequest(requestId, {
+    title: "Storyboard Revision Needed",
+    body: `Upload an updated storyboard for ${request.doctor_name}. Revision ${nextRevisionCount} of ${request.max_storyboard_revisions}.`,
+    tag: `storyboard-revision-${requestId}`,
+  });
+
   revalidatePath(`/requests/${requestId}`);
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath(`/supervisor/requests/${requestId}`);
@@ -669,16 +680,23 @@ export async function approveStoryboardAction(formData: FormData) {
     return;
   }
 
-  const { error } = await supabase
+  const { data: approvedRequest } = await supabase
     .from("requests")
     .update({ status: "storyboard_approved" })
     .eq("id", requestId)
-    .eq("status", "storyboard_review");
+    .eq("status", "storyboard_review")
+    .select("doctor_name")
+    .maybeSingle<{ doctor_name: string }>();
 
-  if (error) {
-    console.error(error.message);
+  if (!approvedRequest) {
     return;
   }
+
+  await notifyAdminsForRequest(requestId, {
+    title: "Ready for Video Production",
+    body: `The storyboard for ${approvedRequest.doctor_name} is approved. Produce and upload the final video.`,
+    tag: `storyboard-approved-${requestId}`,
+  });
 
   revalidatePath(`/requests/${requestId}`);
   revalidatePath(`/admin/requests/${requestId}`);
